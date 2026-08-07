@@ -1,22 +1,31 @@
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
-import { Toaster } from "react-hot-toast";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import App from './App';
-import './index.css'; // Opcional: tu archivo de estilos globales o Tailwind
+import React from "react";
+import ReactDOM from "react-dom/client";
 
-const rootElement = document.getElementById('root');
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "react-hot-toast";
+
+import "./index.css";
+import App from "./App";
+
 const queryClient = new QueryClient();
 
-if (!rootElement) {
-  throw new Error("No se encontró el elemento 'root' en el index.html");
+async function enableMocking() {
+  if (import.meta.env.DEV) {
+    const { worker } = await import("./mocks/browser");
+
+    await worker.start({
+      onUnhandledRequest: "bypass",
+    });
+  }
 }
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-      <Toaster position="top-right" />
-    </QueryClientProvider>
-  </StrictMode>
-);
+enableMocking().then(() => {
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <App />
+        <Toaster position="top-right" />
+      </QueryClientProvider>
+    </React.StrictMode>
+  );
+});

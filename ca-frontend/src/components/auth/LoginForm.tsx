@@ -1,4 +1,7 @@
 import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+
 import { login } from "../../services/auth.service";
 
 interface LoginData {
@@ -7,6 +10,8 @@ interface LoginData {
 }
 
 export default function LoginForm() {
+  const navigate = useNavigate();
+
   const {
     register,
     handleSubmit,
@@ -17,21 +22,21 @@ export default function LoginForm() {
     try {
       await login(data);
 
-      // después redirigiremos al dashboard
-      alert("Login correcto");
+      toast.success("Bienvenido.");
+
+      navigate("/");
     } catch {
-      alert("Usuario o contraseña incorrectos");
+      toast.error("Usuario o contraseña incorrectos.");
     }
   }
 
   return (
-    <div className="w-full max-w-md rounded-xl bg-white shadow-lg p-8">
-
-      <h1 className="text-3xl font-bold text-center mb-2">
+    <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-lg">
+      <h1 className="mb-2 text-center text-3xl font-bold">
         Autoridad Certificadora
       </h1>
 
-      <p className="text-center text-gray-500 mb-8">
+      <p className="mb-8 text-center text-gray-500">
         Panel de administración
       </p>
 
@@ -40,7 +45,7 @@ export default function LoginForm() {
         className="space-y-5"
       >
         <div>
-          <label className="block mb-2 font-medium">
+          <label className="mb-2 block font-medium">
             Usuario
           </label>
 
@@ -59,7 +64,7 @@ export default function LoginForm() {
         </div>
 
         <div>
-          <label className="block mb-2 font-medium">
+          <label className="mb-2 block font-medium">
             Contraseña
           </label>
 
@@ -80,12 +85,11 @@ export default function LoginForm() {
 
         <button
           disabled={isSubmitting}
-          className="w-full rounded-lg bg-blue-600 py-2 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+          className="w-full rounded-lg bg-blue-600 py-2 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
         >
           {isSubmitting ? "Ingresando..." : "Ingresar"}
         </button>
       </form>
-
     </div>
   );
 }
