@@ -1,57 +1,120 @@
 import { useState } from "react";
+import toast from "react-hot-toast";
 
 import { downloadFile } from "../../utils/download";
+import { downloadCAFragment } from "../../services/ca.service";
 
 interface Props {
-  filename: string;
-  content: string;
-  disabled: boolean;
+  fragmentId: number;
+  owner: string;
 }
 
 export default function DownloadCard({
-  filename,
-  content,
-  disabled,
+  fragmentId,
+  owner,
 }: Props) {
-
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
 
-  function handleDownload() {
+  async function handleDownload() {
+    if (!password) {
+      toast.error(
+        "Ingrese la contraseña del custodio."
+      );
 
-    if (downloaded || disabled) return;
+      return;
+    }
 
-    downloadFile(filename, content);
+    try {
+      setLoading(true);
 
-    setDownloaded(true);
+      const response =
+        await downloadCAFragment(
+          fragmentId,
+          password
+        );
 
+      downloadFile(
+        response.filename,
+        response.content
+      );
+
+      setDownloaded(true);
+      setPassword("");
+
+      toast.success(
+        `Fragmento ${fragmentId} descargado correctamente.`
+      );
+
+    } catch (error: any) {
+
+      if (
+        error?.response?.status === 409
+      ) {
+        toast.error(
+          "Este fragmento ya fue descargado."
+        );
+
+        setDownloaded(true);
+
+      } else if (
+        error?.response?.status === 401
+      ) {
+        toast.error(
+          "Contraseña incorrecta."
+        );
+
+      } else {
+        toast.error(
+          "No fue posible descargar el fragmento."
+        );
+      }
+
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
+    <div className="rounded-xl bg-white p-5 shadow">
 
-    <div className="rounded-xl bg-white shadow p-5">
-
-      <h2 className="font-semibold mb-4">
-
-        {filename}
-
+      <h2 className="font-semibold">
+        Fragmento {fragmentId}
       </h2>
+
+      <p className="mt-1 text-sm text-gray-500">
+        Custodio: {owner}
+      </p>
+
+      <input
+        type="password"
+        value={password}
+        onChange={(event) =>
+          setPassword(event.target.value)
+        }
+        disabled={
+          loading || downloaded
+        }
+        placeholder="Contraseña del custodio"
+        className="mt-4 w-full rounded-lg border px-3 py-2"
+      />
 
       <button
         onClick={handleDownload}
-        disabled={downloaded || disabled}
-        className="w-full rounded-lg bg-blue-600 py-2 text-white disabled:bg-gray-400"
+        disabled={
+          loading ||
+          downloaded
+        }
+        className="mt-3 w-full rounded-lg bg-blue-600 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
-
         {downloaded
           ? "Descargado"
-          : disabled
-          ? "Expirado"
-          : "Descargar"}
-
+          : loading
+          ? "Descargando..."
+          : "Descargar fragmento"}
       </button>
 
     </div>
-
   );
-
 }

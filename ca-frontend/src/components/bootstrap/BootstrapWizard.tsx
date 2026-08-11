@@ -1,10 +1,15 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 
-import { bootstrapCA } from "../../services/ca.service";
+import {
+  bootstrapCA,
+  BootstrapResponse,
+} from "../../services/ca.service";
+
 import { useCAStatus } from "../../hooks/useCAStatus";
 
 import RootCertificateCard from "../dashboard/RootCertificateCard";
+import DownloadCard from "./DownloadCard";
 
 export default function BootstrapWizard() {
   const {
@@ -15,6 +20,9 @@ export default function BootstrapWizard() {
   } = useCAStatus();
 
   const [loading, setLoading] = useState(false);
+
+  const [bootstrap, setBootstrap] =
+    useState<BootstrapResponse | null>(null);
 
   async function handleBootstrap() {
     const confirmed = window.confirm(
@@ -28,13 +36,13 @@ export default function BootstrapWizard() {
     try {
       setLoading(true);
 
-      await bootstrapCA();
+      const response = await bootstrapCA();
+
+      setBootstrap(response);
 
       toast.success(
         "Autoridad Certificadora generada correctamente."
       );
-
-      await refetch();
 
     } catch (error: any) {
 
@@ -42,6 +50,9 @@ export default function BootstrapWizard() {
         toast.error(
           "La Autoridad Certificadora ya fue inicializada."
         );
+
+        await refetch();
+
       } else {
         toast.error(
           "No fue posible generar la Autoridad Certificadora."
@@ -86,10 +97,80 @@ export default function BootstrapWizard() {
   }
 
   /*
-   * La CA ya existe.
-   * No mostramos nuevamente "Generar CA".
+   * Después de generar la CA mostramos inmediatamente
+   * el certificado y los cuatro fragmentos.
    */
-  if (status?.initialized && status.rootCertificate) {
+  if (bootstrap) {
+  return (
+    <div className="space-y-6">
+
+      <div className="rounded-lg border border-green-300 bg-green-50 p-5">
+        <h2 className="text-lg font-bold text-green-700">
+          Autoridad Certificadora generada correctamente
+        </h2>
+
+        <p className="mt-2 text-gray-700">
+          La ceremonia de generación ha finalizado.
+          Descargue y almacene los fragmentos de forma segura.
+        </p>
+      </div>
+
+      <RootCertificateCard
+        serialNumber={
+          bootstrap.rootCertificate.serialNumber
+        }
+        fingerprint={
+          bootstrap.rootCertificate.fingerprint
+        }
+        algorithm={
+          bootstrap.rootCertificate.algorithm
+        }
+        issuedAt={
+          bootstrap.rootCertificate.issuedAt
+        }
+        expiresAt={
+          bootstrap.rootCertificate.expiresAt
+        }
+      />
+
+      <div>
+        <h2 className="mb-4 text-xl font-bold">
+          Fragmentos de recuperación
+        </h2>
+
+        <p className="mb-6 text-gray-600">
+          Se generaron cuatro fragmentos SLIP-0039.
+          Se requieren al menos tres para reconstruir
+          la clave privada de la CA.
+        </p>
+
+        <div className="grid gap-4 md:grid-cols-2">
+
+          {bootstrap.fragments.map(
+            (fragment) => (
+              <DownloadCard
+                key={fragment.id}
+                fragmentId={fragment.id}
+                owner={fragment.owner}
+              />
+            )
+          )}
+
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+  /*
+   * La CA ya estaba inicializada antes de entrar
+   * a esta página.
+   */
+  if (
+    status?.initialized &&
+    status.rootCertificate
+  ) {
     return (
       <div className="space-y-6">
 
@@ -99,25 +180,33 @@ export default function BootstrapWizard() {
           </h2>
 
           <p className="mt-2 text-gray-700">
-            La CA ya fue generada y no puede volver a inicializarse.
+            La CA ya fue generada y no puede volver
+            a inicializarse.
           </p>
         </div>
 
         <RootCertificateCard
-          serialNumber={status.rootCertificate.serialNumber}
-          fingerprint={status.rootCertificate.fingerprint}
-          algorithm={status.rootCertificate.algorithm}
-          issuedAt={status.rootCertificate.issuedAt}
-          expiresAt={status.rootCertificate.expiresAt}
+          serialNumber={
+            status.rootCertificate.serialNumber
+          }
+          fingerprint={
+            status.rootCertificate.fingerprint
+          }
+          algorithm={
+            status.rootCertificate.algorithm
+          }
+          issuedAt={
+            status.rootCertificate.issuedAt
+          }
+          expiresAt={
+            status.rootCertificate.expiresAt
+          }
         />
 
       </div>
     );
   }
 
-  /*
-   * CA todavía no inicializada.
-   */
   return (
     <div className="rounded-xl bg-white p-8 shadow">
 
@@ -126,9 +215,9 @@ export default function BootstrapWizard() {
       </h2>
 
       <p className="mt-4 text-gray-600">
-        Esta operación generará la llave privada de la CA,
-        emitirá el certificado raíz y dividirá el secreto
-        mediante Shamir Secret Sharing.
+        Esta operación generará la llave privada P-256
+        de la CA, emitirá el certificado raíz y dividirá
+        el secreto mediante SLIP-0039.
       </p>
 
       <div className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">
@@ -143,21 +232,20 @@ export default function BootstrapWizard() {
           </li>
 
           <li>
-            Se generarán cuatro fragmentos de Shamir.
+            Se generarán cuatro fragmentos.
           </li>
 
           <li>
-            Cada fragmento será protegido con la contraseña
-            de su cuidador.
+            Cada fragmento está cifrado individualmente.
           </li>
 
           <li>
-            Se necesitarán al menos tres fragmentos para
-            reconstruir la llave de la CA.
+            Cada fragmento corresponde a un custodio.
           </li>
 
           <li>
-            Los fragmentos serán descargados cifrados.
+            Se necesitan al menos tres fragmentos para
+            reconstruir la clave.
           </li>
         </ul>
 

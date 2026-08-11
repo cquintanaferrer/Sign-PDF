@@ -7,7 +7,7 @@ from app.api.auth import router as auth_router
 from app.core.config import settings
 from app.core.database import get_db
 from app.api.ca import router as ca_router
-
+from app.api.dev import router as dev_router
 
 app = FastAPI(
     title=settings.app_name,
@@ -27,7 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+app.include_router(dev_router)
 app.include_router(auth_router)
 app.include_router(ca_router)
 

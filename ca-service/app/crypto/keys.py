@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-
+from cryptography.hazmat.primitives import serialization
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -94,6 +94,18 @@ def serialize_certificate(
         serialization.Encoding.PEM
     )
 
+def serialize_public_key(private_key) -> str:
+    """
+    Obtiene la clave pública correspondiente a una
+    clave privada EC y la serializa en PEM.
+    """
+
+    public_key = private_key.public_key()
+
+    return public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
 
 def certificate_fingerprint(
     certificate,

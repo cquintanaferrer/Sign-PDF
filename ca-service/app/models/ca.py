@@ -1,5 +1,5 @@
-import uuid
 from datetime import datetime
+import uuid
 
 from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -21,38 +21,37 @@ class CertificateAuthority(Base):
         default=False,
     )
 
-    root_certificate: Mapped[str | None] = mapped_column(
+    root_certificate: Mapped[str] = mapped_column(
         Text,
-        nullable=True,
+        nullable=False,
     )
 
-    serial_number: Mapped[str | None] = mapped_column(
+    public_key: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    serial_number: Mapped[str] = mapped_column(
         String(255),
-        nullable=True,
+        nullable=False,
     )
 
-    fingerprint: Mapped[str | None] = mapped_column(
+    fingerprint: Mapped[str] = mapped_column(
         String(255),
-        nullable=True,
+        nullable=False,
     )
 
-    algorithm: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
+    algorithm: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
     )
 
-    issued_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
+    issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
     )
