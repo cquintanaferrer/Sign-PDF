@@ -7,16 +7,30 @@ export async function getPendingCSR() {
   return response.data;
 }
 
+export interface FragmentData {
+  file: File;
+  password: string;
+}
+
 export async function issueCertificate(
   csrId: string,
-  fragment1: File,
-  fragment2: File
+  fragments: FragmentData[]
 ) {
   const formData = new FormData();
 
   formData.append("csrId", csrId);
-  formData.append("fragment1", fragment1);
-  formData.append("fragment2", fragment2);
+
+  fragments.forEach((fragment, index) => {
+    formData.append(
+      `fragment${index + 1}`,
+      fragment.file
+    );
+
+    formData.append(
+      `password${index + 1}`,
+      fragment.password
+    );
+  });
 
   const response = await api.post(
     "/csr/issue",

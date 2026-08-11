@@ -5,7 +5,7 @@ export default function BootstrapCA() {
     <div>
 
       <h1 className="text-3xl font-bold mb-8">
-        Bootstrap de la CA
+        Inicio de CA
       </h1>
 
       <BootstrapWizard />

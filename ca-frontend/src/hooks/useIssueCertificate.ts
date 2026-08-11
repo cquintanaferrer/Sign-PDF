@@ -1,5 +1,12 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { issueCertificate } from "../services/csr.service";
+import {
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
+
+import {
+  issueCertificate,
+  FragmentData,
+} from "../services/csr.service";
 
 export function useIssueCertificate() {
   const queryClient = useQueryClient();
@@ -7,18 +14,24 @@ export function useIssueCertificate() {
   return useMutation({
     mutationFn: ({
       csrId,
-      fragment1,
-      fragment2,
+      fragments,
     }: {
       csrId: string;
-      fragment1: File;
-      fragment2: File;
+      fragments: FragmentData[];
     }) =>
-      issueCertificate(csrId, fragment1, fragment2),
+      issueCertificate(csrId, fragments),
 
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["pending-csr"],
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: ["certificates"],
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard"],
       });
     },
   });
