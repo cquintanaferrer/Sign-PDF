@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>SignPDF — Demo ECDSA P-256</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">SignPDF · prueba local</p>
+          <h1>ECDSA P-256 en el navegador</h1>
+          <p class="lead">Genera llaves, crea una CSR, firma un archivo y verifica la firma sin enviar la llave privada a ningún servidor.</p>
+        </div>
+        <div class="local-badge">100% local · sin backend</div>
+      </header>
+
+      <section class="card">
+        <div class="section-heading">
+          <span class="step">1</span>
+          <div>
+            <h2>Llaves del usuario</h2>
+            <p>Web Crypto genera ECDSA P-256. La privada se exporta como PKCS#8 y la pública como SPKI.</p>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="generateKeys" class="primary">Generar llaves ECDSA</button>
+          <span id="keyStatus" class="status neutral">Sin generar</span>
+        </div>
+
+        <div class="two-cols">
+          <label>
+            <span>Private key · PKCS#8 PEM</span>
+            <textarea id="privateKeyPem" rows="9" readonly placeholder="Aquí aparecerá la llave privada de prueba"></textarea>
+            <button id="downloadPrivate" class="secondary" disabled>Descargar private_key.pem</button>
+          </label>
+          <label>
+            <span>Public key · SPKI PEM</span>
+            <textarea id="publicKeyPem" rows="9" readonly placeholder="Aquí aparecerá la llave pública"></textarea>
+            <button id="downloadPublic" class="secondary" disabled>Descargar public_key.pem</button>
+          </label>
+        </div>
+        <p class="warning">Demo: la privada se muestra únicamente para comprobar exportación/importación. En el flujo final deberá protegerse y nunca enviarse al backend.</p>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <span class="step">2</span>
+          <div>
+            <h2>Crear CSR PKCS#10</h2>
+            <p>La CSR contiene la identidad y la llave pública, y queda firmada con la llave privada del usuario.</p>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>Nombre / Common Name</span>
+            <input id="commonName" value="Diego Aguilar Hurtado" autocomplete="name" />
+          </label>
+          <label>
+            <span>Correo</span>
+            <input id="email" value="diego@example.com" type="email" autocomplete="email" />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="createCsr" class="primary" disabled>Crear CSR</button>
+          <button id="sendCsrMock" class="secondary" disabled>Enviar CSR (mock)</button>
+          <button id="downloadCsr" class="secondary" disabled>Descargar CSR</button>
+        </div>
+
+        <label>
+          <span>CSR PEM</span>
+          <textarea id="csrPem" rows="10" readonly placeholder="-----BEGIN CERTIFICATE REQUEST-----"></textarea>
+        </label>
+        <pre id="mockResponse" class="response-box">Todavía no se ha simulado el envío.</pre>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <span class="step">3</span>
+          <div>
+            <h2>Seleccionar documento</h2>
+            <p>Se leen los bytes originales del archivo. El SHA-256 mostrado es diagnóstico; <strong>sign()</strong> firma los bytes con ECDSA/SHA-256.</p>
+          </div>
+        </div>
+
+        <label class="file-picker">
+          <span>Archivo a firmar</span>
+          <input id="documentFile" type="file" />
+        </label>
+
+        <dl class="file-info">
+          <div><dt>Nombre</dt><dd id="fileName">—</dd></div>
+          <div><dt>Tamaño</dt><dd id="fileSize">—</dd></div>
+          <div class="wide"><dt>SHA-256</dt><dd id="fileHash" class="mono">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <span class="step">4</span>
+          <div>
+            <h2>Firmar y verificar</h2>
+            <p>La firma de intercambio es raw <code>r || s</code>: 64 bytes para P-256, representados en Base64.</p>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="signDocument" class="primary" disabled>Firmar documento</button>
+          <button id="verifyDocument" class="secondary" disabled>Verificar original</button>
+          <button id="verifyTampered" class="danger" disabled>Probar archivo alterado</button>
+        </div>
+
+        <label>
+          <span>Firma Base64 · raw r || s</span>
+          <textarea id="signatureBase64" rows="5" readonly placeholder="La firma aparecerá aquí"></textarea>
+        </label>
+
+        <div id="verificationResult" class="verification neutral">Sin verificación todavía.</div>
+      </section>
+
+      <section class="card compact">
+        <div class="section-heading">
+          <span class="step">✓</span>
+          <div>
+            <h2>Registro de la demo</h2>
+            <p>Cada operación realizada en esta página aparece aquí.</p>
+          </div>
+        </div>
+        <pre id="activityLog" class="log">Página lista.</pre>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
