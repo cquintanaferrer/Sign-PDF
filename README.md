@@ -26,6 +26,9 @@ Esta guía describe cómo cualquier aplicación o cliente externo puede interact
 │                 │ ◄─────────────────────────────────────────────────── │              │
 └─────────────────┘             Regresa: Estado + Certificado            └──────────────┘
 
+
+---
+
 # Solicitud de certificados a la CA
 
 Una aplicación externa puede solicitar un certificado digital a la Autoridad Certificadora (CA) mediante una CSR (Certificate Signing Request).
