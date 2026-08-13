@@ -13,23 +13,29 @@ export function useIssueCertificate() {
 
   return useMutation({
     mutationFn: ({
-      csrId,
+      csrFile,
       fragments,
     }: {
-      csrId: string;
+      csrFile: File;
       fragments: FragmentData[];
     }) =>
-      issueCertificate(csrId, fragments),
+      issueCertificate(
+        csrFile,
+        fragments
+      ),
 
     onSuccess: () => {
+      // Actualizar las CSR pendientes
       queryClient.invalidateQueries({
         queryKey: ["pending-csr"],
       });
 
+      // Actualizar certificados
       queryClient.invalidateQueries({
         queryKey: ["certificates"],
       });
 
+      // Actualizar dashboard
       queryClient.invalidateQueries({
         queryKey: ["dashboard"],
       });

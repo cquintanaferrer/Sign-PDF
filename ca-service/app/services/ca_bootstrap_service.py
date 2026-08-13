@@ -1,3 +1,4 @@
+import hashlib
 from app.core.config import settings
 from app.crypto.encryption import encrypt_fragment
 from app.crypto.keys import (
@@ -11,7 +12,6 @@ from app.crypto.slip39 import split_secret
 from app.models.ca import CertificateAuthority
 from app.models.ca_fragment import CAFragment
 from app.services.ca_service import get_ca
-
 
 CUSTODIANS = [
     "autority1",
@@ -68,6 +68,10 @@ def bootstrap_ca(db):
         byteorder="big",
     )
 
+    private_key_hash = hashlib.sha256(
+        private_scalar
+    ).hexdigest()
+
     # --------------------------------------------------
     # 3. Generar certificado raíz
     # --------------------------------------------------
@@ -119,6 +123,7 @@ def bootstrap_ca(db):
         algorithm="ECDSA P-256 / SHA-256",
         issued_at=certificate.not_valid_before_utc,
         expires_at=certificate.not_valid_after_utc,
+        private_key_hash=private_key_hash
         )
 
         db.add(ca)

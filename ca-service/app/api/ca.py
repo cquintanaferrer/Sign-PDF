@@ -13,6 +13,12 @@ from app.models.ca_fragment import CAFragment
 from app.services.user_service import get_user_by_username
 from app.core.security import verify_password
 
+from app.models.ca_requests import ReconstructCARequest
+from app.services.fragment_service import (
+    FragmentInput,
+    reconstruct_ca_secret,
+)
+
 
 router = APIRouter(
     prefix="/api/ca",
@@ -184,4 +190,33 @@ def download_fragment(
         "fragmentId": current_fragment_id,
         "filename": filename,
         "content": encrypted_content,
+    }
+
+@router.post("/reconstruct")
+def reconstruct_ca(
+    request: ReconstructCARequest,
+    admin=Depends(require_ca_admin),
+):
+    fragments = [
+        FragmentInput(
+            encrypted_content=fragment.content.encode("utf-8"),
+            password=fragment.password,
+        )
+        for fragment in request.fragments
+    ]
+
+    try:
+        secret = reconstruct_ca_secret(
+            fragments
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    return {
+        "message": "Secreto reconstruido correctamente.",
+        "length": len(secret),
     }

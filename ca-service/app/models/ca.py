@@ -55,3 +55,8 @@ class CertificateAuthority(Base):
         DateTime(timezone=True),
         nullable=False,
     )
+
+    private_key_hash: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
