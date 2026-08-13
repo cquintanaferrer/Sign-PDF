@@ -15,13 +15,9 @@ export interface FragmentData {
 }
 
 export async function issueCertificate(
-  csrFile: File,
+  csrId: string,
   fragments: FragmentData[]
 ) {
-  // ------------------------------------------
-  // Validación del umbral
-  // ------------------------------------------
-
   if (fragments.length < 3) {
     throw new Error(
       "Se requieren al menos 3 fragmentos."
@@ -34,19 +30,14 @@ export async function issueCertificate(
     );
   }
 
-  // ------------------------------------------
-  // Crear multipart/form-data
-  // ------------------------------------------
-
   const formData = new FormData();
 
-  // CSR
+  // ID de la CSR almacenada en PostgreSQL
   formData.append(
-    "csr",
-    csrFile
+    "csr_id",
+    csrId
   );
 
-  // Fragmentos
   fragments.forEach((fragment, index) => {
     const number = index + 1;
 
@@ -61,12 +52,8 @@ export async function issueCertificate(
     );
   });
 
-  // ------------------------------------------
-  // Solicitar emisión
-  // ------------------------------------------
-
   const response = await api.post(
-    "/api/ca/certificates/sign",
+    "/ca/certificates/sign",
     formData
   );
 

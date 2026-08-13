@@ -23,12 +23,6 @@ export default function IssueCertificateModal({
 }: Props) {
   const mutation = useIssueCertificate();
 
-  // CSR que será enviada al servicio de CA.
-  // Temporalmente seleccionaremos test_request.csr
-  // para realizar la prueba de emisión.
-  const [csrFile, setCsrFile] =
-    useState<File | null>(null);
-
   const [fragments, setFragments] = useState<
     FragmentState[]
   >([
@@ -57,19 +51,7 @@ export default function IssueCertificateModal({
 
   async function handleIssue() {
     // ------------------------------------------
-    // 1. Validar CSR
-    // ------------------------------------------
-
-    if (!csrFile) {
-      toast.error(
-        "Debe seleccionar la CSR que será firmada."
-      );
-
-      return;
-    }
-
-    // ------------------------------------------
-    // 2. Obtener fragmentos completos
+    // Validar fragmentos
     // ------------------------------------------
 
     const validFragments = fragments.filter(
@@ -79,7 +61,7 @@ export default function IssueCertificateModal({
     );
 
     // ------------------------------------------
-    // 3. Mínimo 3 fragmentos
+    // Mínimo 3 fragmentos
     // ------------------------------------------
 
     if (validFragments.length < 3) {
@@ -91,7 +73,7 @@ export default function IssueCertificateModal({
     }
 
     // ------------------------------------------
-    // 4. Detectar fragmentos incompletos
+    // Detectar fragmentos incompletos
     // ------------------------------------------
 
     const incompleteFragments = fragments.some(
@@ -111,7 +93,7 @@ export default function IssueCertificateModal({
     }
 
     // ------------------------------------------
-    // 5. Preparar fragmentos
+    // Preparar fragmentos
     // ------------------------------------------
 
     const fragmentData: FragmentData[] =
@@ -121,12 +103,12 @@ export default function IssueCertificateModal({
       }));
 
     // ------------------------------------------
-    // 6. Enviar al backend
+    // Solicitar emisión
     // ------------------------------------------
 
     try {
       await mutation.mutateAsync({
-        csrFile,
+        csrId: csr.id,
         fragments: fragmentData,
       });
 
@@ -137,7 +119,6 @@ export default function IssueCertificateModal({
       onClose();
 
     } catch (error: any) {
-
       console.error(
         "Error al emitir certificado:",
         error
@@ -148,7 +129,7 @@ export default function IssueCertificateModal({
 
       toast.error(
         detail ||
-        "No fue posible emitir el certificado."
+          "No fue posible emitir el certificado."
       );
     }
   }
@@ -163,7 +144,7 @@ export default function IssueCertificateModal({
       <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-8">
 
         {/* ------------------------------------ */}
-        {/* Encabezado */}
+        {/* Información de la CSR */}
         {/* ------------------------------------ */}
 
         <div className="mb-6">
@@ -173,51 +154,29 @@ export default function IssueCertificateModal({
           </h2>
 
           <p className="mt-2 text-gray-500">
-            CSR: {csr.id}
+            Solicitud: {csr.id}
           </p>
 
           <p className="mt-1 text-gray-500">
             Usuario: {csr.username}
           </p>
 
-        </div>
-
-        {/* ------------------------------------ */}
-        {/* CSR */}
-        {/* ------------------------------------ */}
-
-        <div className="mb-6 rounded-lg border border-blue-300 bg-blue-50 p-4">
-
-          <h3 className="font-semibold text-blue-700">
-            CSR del solicitante
-          </h3>
-
-          <p className="mt-2 text-sm text-gray-700">
-            Seleccione el archivo CSR que será firmado
-            por la Autoridad Certificadora.
+          <p className="mt-1 text-gray-500">
+            Algoritmo: {csr.algorithm}
           </p>
 
-          <input
-            type="file"
-            accept=".csr,.pem"
-            onChange={(event) => {
-              setCsrFile(
-                event.target.files?.[0] ?? null
-              );
-            }}
-            className="mt-4 block w-full text-sm"
-          />
+          <p className="mt-1 text-gray-500">
+            Estado: {csr.status}
+          </p>
 
-          {csrFile && (
-            <p className="mt-2 text-sm text-green-600">
-              ✓ CSR seleccionada: {csrFile.name}
-            </p>
-          )}
+          <p className="mt-1 text-gray-500">
+            Fecha de solicitud: {csr.created_at}
+          </p>
 
         </div>
 
         {/* ------------------------------------ */}
-        {/* Reconstrucción */}
+        {/* Información de reconstrucción */}
         {/* ------------------------------------ */}
 
         <div className="mb-6 rounded-lg border border-yellow-300 bg-yellow-50 p-4">
@@ -227,18 +186,19 @@ export default function IssueCertificateModal({
           </h3>
 
           <p className="mt-2 text-sm text-gray-700">
-            Seleccione entre 3 y 4 fragmentos de Shamir.
-            Cada fragmento debe acompañarse de la
-            contraseña correspondiente a su custodio.
+            Proporcione los fragmentos de recuperación
+            necesarios para reconstruir temporalmente
+            la clave privada de la Autoridad Certificadora.
+          </p>
+
+          <p className="mt-2 text-sm text-gray-700">
+            Se requieren al menos{" "}
+            <strong>3 de 4 fragmentos</strong>.
           </p>
 
           <p className="mt-2 font-semibold">
             Fragmentos seleccionados:{" "}
             {selectedCount} / 4
-          </p>
-
-          <p className="text-sm text-gray-600">
-            Mínimo requerido: 3 fragmentos.
           </p>
 
         </div>
@@ -266,25 +226,26 @@ export default function IssueCertificateModal({
         </div>
 
         {/* ------------------------------------ */}
-        {/* Botones */}
+        {/* Acciones */}
         {/* ------------------------------------ */}
 
         <div className="mt-8 flex justify-end gap-4">
 
           <button
+            type="button"
             onClick={onClose}
             disabled={mutation.isPending}
-            className="rounded-lg border px-5 py-2"
+            className="rounded-lg border px-5 py-2 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancelar
           </button>
 
           <button
+            type="button"
             onClick={handleIssue}
             disabled={
               mutation.isPending ||
-              selectedCount < 3 ||
-              !csrFile
+              selectedCount < 3
             }
             className="rounded-lg bg-blue-600 px-5 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >

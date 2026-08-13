@@ -7,10 +7,10 @@ from app.api.auth import router as auth_router
 from app.api.ca import router as ca_router
 from app.api.dev import router as dev_router
 from app.api.certificates import router as certificates_router
+from app.api.csr import router as csr_router
 
 from app.core.config import settings
 from app.core.database import get_db
-
 
 app = FastAPI(
     title=settings.app_name,
@@ -36,7 +36,7 @@ app.include_router(dev_router)
 app.include_router(auth_router)
 app.include_router(ca_router)
 app.include_router(certificates_router)
-
+app.include_router(csr_router, prefix="/api")
 
 @app.get("/api/health")
 def health_check():

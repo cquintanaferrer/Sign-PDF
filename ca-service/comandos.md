@@ -57,3 +57,48 @@ docker exec -it signpdf-postgres psql -U signpdf -d signpdf
                          │
                          ▼
                      respuesta
+
+
+                    APP DEL SOLICITANTE
+                           │
+                           │ 1. genera clave P-256
+                           │ 2. genera CSR
+                           ▼
+                    POST /api/csr
+                           │
+                           ▼
+                       PostgreSQL
+                           │
+                     status = PENDING
+                           │
+                           ▼
+                 FRONTEND ADMIN CA
+                           │
+                    GET /api/csr/pending
+                           │
+                           ▼
+                    [ CSR pendiente ]
+                           │
+                    Administrador
+                           │
+                 ┌─────────┴─────────┐
+                 │                   │
+              3 shares            4 shares
+                 │                   │
+                 └─────────┬─────────┘
+                           ▼
+              POST /api/ca/certificates/sign
+                           │
+                           ▼
+                  reconstruir clave CA
+                           │
+                           ▼
+                    firmar CSR
+                           │
+                           ▼
+                    certificado X.509
+                      │             │
+                      │             └──► PostgreSQL
+                      │
+                      └──► respuesta / consulta
+                           por la APP solicitante

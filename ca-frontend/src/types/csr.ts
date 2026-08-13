@@ -1,8 +1,7 @@
 export interface CSR {
   id: string;
   username: string;
-  email: string;
   algorithm: string;
-  createdAt: string;
-  status: "PENDING" | "SIGNED";
+  created_at: string;
+  status: "PENDING" | "ISSUED" | "REJECTED";
 }
