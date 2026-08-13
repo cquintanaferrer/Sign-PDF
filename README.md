@@ -12,22 +12,6 @@ Esta guía describe cómo cualquier aplicación o cliente externo puede interact
    1. **Enviar la CSR** `POST /api/csr` $\rightarrow$ Obtener un `request_id`.
    2. **Consultar/Descargar** `GET /api/csr/{request_id}` $\rightarrow$ Verificar el estado y obtener el archivo `.pem`.
 
----
-
-## 🚀 Paso a Paso de Integración
-
-┌─────────────────┐             1. POST /api/csr (envía CSR)             ┌──────────────┐
-│                 │ ───────────────────────────────────────────────────► │              │
-│                 │ ◄─────────────────────────────────────────────────── │              │
-│ App Integrada / │                  Regresa: request_id                 │  CA Service  │
-│  Cliente HTTP   │                                                      │              │
-│                 │             2. GET /api/csr/{request_id}             │              │
-│                 │ ───────────────────────────────────────────────────► │              │
-│                 │ ◄─────────────────────────────────────────────────── │              │
-└─────────────────┘             Regresa: Estado + Certificado            └──────────────┘
-
-
----
 
 # Solicitud de certificados a la CA
 
