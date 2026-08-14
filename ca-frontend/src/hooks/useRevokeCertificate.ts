@@ -1,15 +1,22 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { revokeCertificate } from "../services/certificate.service";
+import {
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
+
+import {
+  revokeIssuedCertificate,
+} from "../services/certificates.service";
+
 
 export function useRevokeCertificate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: revokeCertificate,
+    mutationFn: revokeIssuedCertificate,
 
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["certificates"],
+        queryKey: ["issued-certificates"],
       });
     },
   });

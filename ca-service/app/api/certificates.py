@@ -18,6 +18,8 @@ from app.models.ca import CertificateAuthority
 from app.models.csr import CertificateSigningRequest
 from app.models.issued_certificate import IssuedCertificate
 from app.models.certificate import IssuedCertificateResponse
+
+
 from app.services.certificate_service import (
     issue_certificate,
 )
@@ -29,6 +31,37 @@ router = APIRouter(
     prefix="/api/ca/certificates",
     tags=["Certificates"],
 )
+
+@router.get("")
+def get_certificates(
+    db: Session = Depends(get_db),
+    admin=Depends(require_ca_admin),
+):
+    certificates = (
+        db.query(IssuedCertificate)
+        .order_by(
+            IssuedCertificate.issued_at.desc()
+        )
+        .all()
+    )
+
+    return [
+        {
+            "id": str(certificate.id),
+            "serial_number": certificate.serial_number,
+            "subject": certificate.subject,
+            "issuer": certificate.issuer,
+            "algorithm": certificate.algorithm,
+            "issued_at": certificate.issued_at,
+            "expires_at": certificate.expires_at,
+            "status": getattr(
+                certificate,
+                "status",
+                "ISSUED",
+            ),
+        }
+        for certificate in certificates
+    ]
 
 
 @router.post(
@@ -231,3 +264,45 @@ async def sign_certificate(
             certificate.not_valid_after_utc.isoformat()
         ),
     )
+
+@router.post("/{serial_number}/revoke")
+def revoke_certificate(
+    serial_number: str,
+    db: Session = Depends(get_db),
+    admin=Depends(require_ca_admin),
+):
+    certificate = (
+        db.query(IssuedCertificate)
+        .filter(
+            IssuedCertificate.serial_number
+            == serial_number
+        )
+        .first()
+    )
+
+    if certificate is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Certificado no encontrado.",
+        )
+
+    if certificate.status == "REVOKED":
+        raise HTTPException(
+            status_code=409,
+            detail="El certificado ya está revocado.",
+        )
+
+    certificate.status = "REVOKED"
+    certificate.revoked_at = datetime.now(timezone.utc)
+    certificate.revocation_reason = "Revocado por el administrador de la CA."
+
+    db.commit()
+    db.refresh(certificate)
+
+    return {
+        "id": str(certificate.id),
+        "serial_number": certificate.serial_number,
+        "status": certificate.status,
+        "revoked_at": certificate.revoked_at,
+        "revocation_reason": certificate.revocation_reason,
+    }

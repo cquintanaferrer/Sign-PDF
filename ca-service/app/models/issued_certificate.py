@@ -63,3 +63,20 @@ class IssuedCertificate(Base):
         nullable=False,
         index=True,
     )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="ISSUED",
+        index=True,
+    )
+
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    
+    revocation_reason: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from uuid import UUID
+import hashlib
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
@@ -22,11 +23,6 @@ async def create_csr(
     csr: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    """
-    Recibe una CSR de una aplicación solicitante
-    y la almacena como PENDING.
-    """
-
     csr_data = await csr.read()
 
     if not csr_data:
@@ -53,6 +49,33 @@ async def create_csr(
             detail="La CSR debe utilizar ECDSA P-256.",
         )
 
+    public_key_der = public_key.public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    public_key_fingerprint = hashlib.sha256(
+        public_key_der
+    ).hexdigest()
+
+    existing_request = (
+        db.query(CertificateSigningRequest)
+        .filter(
+            CertificateSigningRequest.public_key_fingerprint
+            == public_key_fingerprint
+        )
+        .first()
+    )
+
+    if existing_request is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Ya existe una solicitud o certificado "
+                "asociado a esta clave pública."
+            ),
+        )
+
     pem = csr_obj.public_bytes(
         serialization.Encoding.PEM
     ).decode("utf-8")
@@ -62,6 +85,7 @@ async def create_csr(
     request = CertificateSigningRequest(
         requester_username=subject,
         csr_pem=pem,
+        public_key_fingerprint=public_key_fingerprint,
         algorithm="ECDSA P-256 / SHA-256",
         status="PENDING",
     )

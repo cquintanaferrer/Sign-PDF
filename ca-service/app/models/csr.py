@@ -26,6 +26,13 @@ class CertificateSigningRequest(Base):
         nullable=False,
     )
 
+    public_key_fingerprint: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
     algorithm: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
