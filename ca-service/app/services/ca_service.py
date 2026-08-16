@@ -8,7 +8,16 @@ def get_ca(
     db: Session,
 ) -> CertificateAuthority | None:
 
-    statement = select(CertificateAuthority)
+    statement = (
+        select(CertificateAuthority)
+        .where(
+            CertificateAuthority.is_active.is_(True),
+            CertificateAuthority.initialized.is_(True),
+        )
+        .order_by(
+            CertificateAuthority.generation.desc()
+        )
+    )
 
     return db.scalar(statement)
 

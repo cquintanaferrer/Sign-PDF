@@ -1,14 +1,28 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, Text, ForeignKey
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
+)
+
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 
-
 class CAFragment(Base):
     __tablename__ = "ca_fragments"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "ca_id",
+            "fragment_id",
+            name="uq_ca_fragment",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
@@ -17,7 +31,6 @@ class CAFragment(Base):
 
     fragment_id: Mapped[int] = mapped_column(
         Integer,
-        unique=True,
         nullable=False,
     )
 

@@ -137,3 +137,47 @@ export async function getCAPublicKey(): Promise<CAPublicKeyResponse> {
 
   return response.data;
 }
+
+export interface RotateCAFragment {
+  file: File;
+  password: string;
+}
+
+export async function rotateCA(
+  fragments: RotateCAFragment[]
+) {
+  if (fragments.length < 3) {
+    throw new Error(
+      "Se requieren al menos 3 fragmentos."
+    );
+  }
+
+  if (fragments.length > 4) {
+    throw new Error(
+      "No se pueden enviar más de 4 fragmentos."
+    );
+  }
+
+  const formData = new FormData();
+
+  fragments.forEach((fragment, index) => {
+    const number = index + 1;
+
+    formData.append(
+      `fragment_${number}`,
+      fragment.file
+    );
+
+    formData.append(
+      `password_${number}`,
+      fragment.password
+    );
+  });
+
+  const response = await api.post(
+    "/ca/rotate",
+    formData
+  );
+
+  return response.data;
+}

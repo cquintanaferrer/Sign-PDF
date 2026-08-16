@@ -163,16 +163,42 @@ export default function Dashboard() {
                         : item.action}
                     </p>
                       
+                    {/* CSR */}
                     {item.type === "CSR" && (
                       <p className="mt-1 text-sm text-gray-500">
                         {item.requester}
                       </p>
                     )}
             
-                    {item.type === "CERTIFICATE" && (
-                      <p className="mt-1 text-sm text-gray-500">
-                        {item.subject}
-                      </p>
+                    {/* Certificado emitido */}
+                    {item.type === "CERTIFICATE" &&
+                      item.status === "ISSUED" && (
+                        <p className="mt-1 text-sm text-gray-500">
+                          {item.subject}
+                        </p>
+                      )}
+            
+                    {/* Certificado revocado */}
+                    {item.type === "CERTIFICATE" &&
+                      item.status === "REVOKED" && (
+                        <p className="mt-1 text-sm text-gray-500">
+                          {item.subject}
+                        </p>
+                      )}
+            
+                    {/* Rotación de CA */}
+                    {item.type === "CA_ROTATION" && (
+                      <div className="mt-1 text-sm text-gray-500">
+                        <p>
+                          Generación {item.generation}
+                        </p>
+                    
+                        {item.fingerprint && (
+                          <p className="font-mono text-xs">
+                            {item.fingerprint}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                   
@@ -181,7 +207,15 @@ export default function Dashboard() {
                       {formatDate(item.timestamp)}
                     </p>
                   
-                    <span className="mt-1 inline-block rounded-full bg-gray-100 px-2 py-1 text-xs font-medium">
+                    <span
+                      className={`mt-1 inline-block rounded-full px-2 py-1 text-xs font-medium ${
+                        item.status === "REVOKED"
+                          ? "bg-red-100 text-red-700"
+                          : item.status === "ROTATED"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
                       {item.status}
                     </span>
                   </div>

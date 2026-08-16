@@ -106,6 +106,32 @@ def get_dashboard(
         .all()
     )
 
+    recent_revocations = (
+        db.query(IssuedCertificate)
+        .filter(
+            IssuedCertificate.status == "REVOKED",
+            IssuedCertificate.revoked_at.isnot(None),
+        )
+        .order_by(
+            IssuedCertificate.revoked_at.desc()
+        )
+        .limit(10)
+        .all()
+    )
+
+    recent_rotations = (
+        db.query(CertificateAuthority)
+        .filter(
+            CertificateAuthority.generation > 1,
+            CertificateAuthority.parent_ca_id.isnot(None),
+        )
+        .order_by(
+            CertificateAuthority.issued_at.desc()
+        )
+        .limit(10)
+        .all()
+    )
+
     activity = []
 
     for request in recent_csr:
@@ -130,6 +156,33 @@ def get_dashboard(
             "timestamp": certificate.issued_at,
             "serial_number": certificate.serial_number,
             "subject": certificate.subject,
+        })
+
+    for certificate in recent_revocations:
+        activity.append({
+            "type": "CERTIFICATE",
+            "action": "Certificado revocado",
+            "status": "REVOKED",
+            "timestamp": certificate.revoked_at,
+            "serial_number": certificate.serial_number,
+            "subject": certificate.subject,
+    })
+
+
+    for ca_rotation in recent_rotations:
+        activity.append({
+            "type": "CA_ROTATION",
+            "action": "Autoridad Certificadora reiniciada",
+            "status": "ROTATED",
+            "timestamp": ca_rotation.issued_at,
+            "generation": ca_rotation.generation,
+            "ca_id": str(ca_rotation.id),
+            "previous_ca_id": (
+                str(ca_rotation.parent_ca_id)
+                if ca_rotation.parent_ca_id
+                else None
+            ),
+            "fingerprint": ca_rotation.fingerprint,
         })
 
     # Ordenar toda la actividad por fecha

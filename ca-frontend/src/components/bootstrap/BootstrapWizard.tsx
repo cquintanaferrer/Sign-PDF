@@ -1,6 +1,5 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
-
 import {
   bootstrapCA,
   BootstrapResponse,
@@ -8,6 +7,7 @@ import {
 
 import { useCAStatus } from "../../hooks/useCAStatus";
 
+import RotateCAModal from "./RotateCAModal";
 import RootCertificateCard from "../dashboard/RootCertificateCard";
 import DownloadCard from "./DownloadCard";
 
@@ -23,6 +23,11 @@ export default function BootstrapWizard() {
 
   const [bootstrap, setBootstrap] =
     useState<BootstrapResponse | null>(null);
+  const [showRotateModal, setShowRotateModal] =
+    useState(false);
+
+  const [rotationResult, setRotationResult] =
+    useState<any>(null);
 
   async function handleBootstrap() {
     const confirmed = window.confirm(
@@ -167,11 +172,12 @@ export default function BootstrapWizard() {
    * La CA ya estaba inicializada antes de entrar
    * a esta página.
    */
-  if (
-    status?.initialized &&
-    status.rootCertificate
-  ) {
-    return (
+ if (
+  status?.initialized &&
+  status.rootCertificate
+) {
+  return (
+    <>
       <div className="space-y-6">
 
         <div className="rounded-lg border border-green-300 bg-green-50 p-5">
@@ -180,8 +186,7 @@ export default function BootstrapWizard() {
           </h2>
 
           <p className="mt-2 text-gray-700">
-            La CA ya fue generada y no puede volver
-            a inicializarse.
+            La CA está actualmente activa.
           </p>
         </div>
 
@@ -203,9 +208,124 @@ export default function BootstrapWizard() {
           }
         />
 
+        <div className="rounded-xl border border-red-300 bg-red-50 p-6">
+          <h2 className="text-lg font-bold text-red-700">
+            Reiniciar Autoridad Certificadora
+          </h2>
+
+          <p className="mt-2 text-sm text-red-700">
+            Esta operación generará una nueva CA,
+            realizará un certificado cruzado con la
+            CA actual y dejará la CA actual inactiva.
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              setShowRotateModal(true)
+            }
+            className="mt-4 rounded-lg bg-red-600 px-5 py-2 text-white hover:bg-red-700"
+          >
+            Reiniciar CA
+          </button>
+        </div>
+
+        {rotationResult && (
+  <div className="space-y-6">
+
+    <div className="rounded-xl border border-green-300 bg-green-50 p-6">
+      <h2 className="text-lg font-bold text-green-700">
+        Rotación completada correctamente
+      </h2>
+
+      <p className="mt-2 text-sm text-gray-700">
+        La nueva Autoridad Certificadora fue generada
+        correctamente y la CA anterior fue desactivada.
+      </p>
+
+      <div className="mt-4 space-y-1 text-sm">
+        <p>
+          <strong>Generación:</strong>{" "}
+          {rotationResult.newCA.generation}
+        </p>
+
+        <p>
+          <strong>Serial:</strong>{" "}
+          {rotationResult.newCA.serialNumber}
+        </p>
+
+        <p>
+          <strong>Fingerprint:</strong>{" "}
+          {rotationResult.newCA.fingerprint}
+        </p>
+
+        <p>
+          <strong>Algoritmo:</strong>{" "}
+          {rotationResult.newCA.algorithm}
+          </p>
+          </div>
+            </div>
+
+            <div className="rounded-xl border border-blue-300 bg-blue-50 p-6">
+              <h2 className="text-lg font-bold text-blue-700">
+                Nuevos fragmentos de recuperación
+              </h2>
+
+              <p className="mt-2 text-sm text-gray-700">
+                La nueva CA tiene una nueva clave privada.
+                Se generaron cuatro nuevos fragmentos SLIP-0039.
+              </p>
+
+              <p className="mt-2 text-sm font-semibold text-gray-700">
+                Se requieren al menos 3 de 4 fragmentos para
+                reconstruir la nueva clave.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {rotationResult.fragments.map(
+                (fragment: {
+                  id: number;
+                  owner: string;
+                }) => (
+                  <DownloadCard
+                    key={fragment.id}
+                    fragmentId={fragment.id}
+                    owner={fragment.owner}
+                  />
+                )
+              )}
+    </div>
+
+    <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4">
+      <p className="text-sm text-yellow-800">
+        Cada custodio debe descargar su fragmento y
+        almacenarlo de forma segura. Una vez descargado,
+        el fragmento deja de estar disponible para descarga
+        desde la Autoridad Certificadora.
+      </p>
+    </div>
+
+  </div>
+)}
+
       </div>
-    );
-  }
+
+      {showRotateModal && (
+        <RotateCAModal
+          onClose={() =>
+            setShowRotateModal(false)
+          }
+          onSuccess={(response) => {
+            setRotationResult(response);
+            setShowRotateModal(false);
+            refetch();
+          }}
+        />
+      )}
+    </>
+  );
+}
 
   return (
     <div className="rounded-xl bg-white p-8 shadow">

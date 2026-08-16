@@ -1,5 +1,12 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+)
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -18,7 +25,9 @@ from app.services.fragment_service import (
     FragmentInput,
     reconstruct_ca_secret,
 )
-
+from app.services.ca_rotation_service import (
+    rotate_ca,
+)
 
 router = APIRouter(
     prefix="/api/ca",
@@ -27,7 +36,8 @@ router = APIRouter(
 
 class FragmentDownloadRequest(BaseModel):
     password: str
-
+class RotateCARequest(BaseModel):
+    fragments: list[FragmentInput]
 
 @router.get("/status")
 def get_ca_status(
@@ -111,6 +121,90 @@ def bootstrap(
         )
 
 
+@router.post("/rotate")
+async def rotate(
+    fragment_1: UploadFile = File(...),
+    password_1: str = Form(...),
+
+    fragment_2: UploadFile = File(...),
+    password_2: str = Form(...),
+
+    fragment_3: UploadFile = File(...),
+    password_3: str = Form(...),
+
+    fragment_4: UploadFile | None = File(None),
+    password_4: str | None = Form(None),
+
+    db: Session = Depends(get_db),
+
+    admin=Depends(require_ca_admin),
+):
+    # ---------------------------------------------
+    # 1. El cuarto fragmento requiere contraseña
+    # ---------------------------------------------
+
+    if fragment_4 is not None and password_4 is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "El cuarto fragmento requiere "
+                "su contraseña."
+            ),
+        )
+
+    # ---------------------------------------------
+    # 2. Leer fragmentos
+    # ---------------------------------------------
+
+    fragment_files = [
+        (fragment_1, password_1),
+        (fragment_2, password_2),
+        (fragment_3, password_3),
+    ]
+
+    if fragment_4 is not None:
+        fragment_files.append(
+            (fragment_4, password_4)
+        )
+
+    fragments: list[FragmentInput] = []
+
+    for upload, password in fragment_files:
+
+        content = await upload.read()
+
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"El archivo "
+                    f"{upload.filename} está vacío."
+                ),
+            )
+
+        fragments.append(
+            FragmentInput(
+                encrypted_content=content,
+                password=password,
+            )
+        )
+
+    # ---------------------------------------------
+    # 3. Ejecutar rotación
+    # ---------------------------------------------
+
+    try:
+        return rotate_ca(
+            db=db,
+            fragments=fragments,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
 
 @router.post("/fragments/{fragment_id}/download")
 def download_fragment(
@@ -125,14 +219,25 @@ def download_fragment(
             detail="Fragmento no encontrado.",
         )
 
+    ca = get_ca(db)
+    if ca is None or not ca.initialized:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "La Autoridad Certificadora "
+                "no está inicializada."
+            ),
+        )
+
     statement = (
         select(CAFragment)
         .where(
-            CAFragment.fragment_id == fragment_id
+            CAFragment.ca_id == ca.id,
+            CAFragment.fragment_id == fragment_id,
         )
         .with_for_update()
     )
-
+    
     fragment = db.scalar(statement)
 
     if fragment is None:
@@ -195,11 +300,25 @@ def download_fragment(
 @router.post("/reconstruct")
 def reconstruct_ca(
     request: ReconstructCARequest,
+    db: Session = Depends(get_db),
     admin=Depends(require_ca_admin),
 ):
+    ca = get_ca(db)
+
+    if ca is None or not ca.initialized:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "La Autoridad Certificadora "
+                "no está inicializada."
+            ),
+        )
+
     fragments = [
         FragmentInput(
-            encrypted_content=fragment.content.encode("utf-8"),
+            encrypted_content=fragment.content.encode(
+                "utf-8"
+            ),
             password=fragment.password,
         )
         for fragment in request.fragments
@@ -207,7 +326,8 @@ def reconstruct_ca(
 
     try:
         secret = reconstruct_ca_secret(
-            fragments
+            fragments=fragments,
+            expected_hash=ca.private_key_hash,
         )
 
     except ValueError as exc:
@@ -217,6 +337,8 @@ def reconstruct_ca(
         ) from exc
 
     return {
-        "message": "Secreto reconstruido correctamente.",
+        "message": (
+            "Secreto reconstruido correctamente."
+        ),
         "length": len(secret),
     }

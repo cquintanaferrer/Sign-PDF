@@ -20,15 +20,22 @@ export interface DashboardData {
   };
   
   activity: {
-    type: "CSR" | "CERTIFICATE";
-    action: string;
-    status: string;
-    timestamp: string;
-    request_id?: string;
-    requester?: string;
-    serial_number?: string;
-    subject?: string;
-  }[];
+  type: "CSR" | "CERTIFICATE" | "CA_ROTATION";
+  action: string;
+  status: string;
+  timestamp: string;
+  
+  request_id?: string;
+  requester?: string;
+  
+  serial_number?: string;
+  subject?: string;
+  
+  generation?: number;
+  ca_id?: string;
+  previous_ca_id?: string;
+  fingerprint?: string;
+}[];
 }
 
 export async function getDashboard(): Promise<DashboardData> {
