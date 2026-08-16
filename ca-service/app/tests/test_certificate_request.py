@@ -6,7 +6,7 @@ import requests
 
 BASE_DIR = Path(__file__).resolve().parent
 
-API_URL = "http://127.0.0.1:8000"
+API_URL = "http://127.0.0.1:8001"
 
 REQUEST_ID = sys.argv[1] if len(sys.argv) > 1 else None
 

@@ -26,6 +26,9 @@ from app.services.certificate_service import (
 from app.services.fragment_service import (
     FragmentInput,
 )
+from app.services.certificate_verification_service import (
+    verify_certificate,
+)
 
 router = APIRouter(
     prefix="/api/ca/certificates",
@@ -264,6 +267,31 @@ async def sign_certificate(
             certificate.not_valid_after_utc.isoformat()
         ),
     )
+
+@router.post("/verify")
+async def verify_certificate_endpoint(
+    certificate: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    certificate_data = await certificate.read()
+
+    if not certificate_data:
+        raise HTTPException(
+            status_code=400,
+            detail="El certificado está vacío.",
+        )
+
+    try:
+        return verify_certificate(
+            certificate_pem=certificate_data,
+            db=db,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
 @router.post("/{serial_number}/revoke")
 def revoke_certificate(
