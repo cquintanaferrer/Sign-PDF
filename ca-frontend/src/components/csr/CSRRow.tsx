@@ -12,13 +12,23 @@ export default function CSRRow({
   return (
     <tr className="border-b">
 
-      <td className="p-3">{csr.username}</td>
+      <td className="p-3">
+        {csr.username}
+      </td>
 
-      <td>{csr.email}</td>
+      <td>
+        {csr.algorithm}
+      </td>
 
-      <td>{csr.algorithm}</td>
+      <td>
+        {new Date(
+          csr.created_at
+        ).toLocaleString("es-MX")}
+      </td>
 
-      <td>{csr.createdAt}</td>
+      <td>
+        {csr.status}
+      </td>
 
       <td>
 

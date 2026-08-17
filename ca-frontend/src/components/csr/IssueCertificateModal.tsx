@@ -209,7 +209,7 @@ export default function IssueCertificateModal({
 
         <div className="grid gap-4 md:grid-cols-2">
 
-          {fragments.map((fragment, index) => (
+          {fragments.map((_, index) => (
             <FragmentUploader
               key={index}
               fragmentNumber={index + 1}

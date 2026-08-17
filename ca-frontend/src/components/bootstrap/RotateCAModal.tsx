@@ -197,7 +197,7 @@ export default function RotateCAModal({
 
         <div className="grid gap-4 md:grid-cols-2">
           {fragments.map(
-            (fragment, index) => (
+            (_, index) => (
               <FragmentUploader
                 key={index}
                 fragmentNumber={index + 1}
