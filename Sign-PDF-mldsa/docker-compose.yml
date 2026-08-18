@@ -1,0 +1,88 @@
+services:
+
+  postgres:
+    image: postgres:17
+    container_name: signpdf-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - signpdf
+
+
+  ca-service:
+    build:
+      context: ./ca-service
+      dockerfile: Dockerfile
+
+    container_name: signpdf-ca
+    restart: unless-stopped
+
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      CA_ADMIN_PASSWORD: ${CA_ADMIN_PASSWORD}
+      AUTHORITY1_PASSWORD: ${AUTHORITY1_PASSWORD}
+      AUTHORITY2_PASSWORD: ${AUTHORITY2_PASSWORD}
+      AUTHORITY3_PASSWORD: ${AUTHORITY3_PASSWORD}
+      AUTHORITY4_PASSWORD: ${AUTHORITY4_PASSWORD}
+    
+    ports:
+    - "8000:8000"
+
+    depends_on:
+      - postgres
+
+    networks:
+      - signpdf
+
+
+  ca-frontend:
+    build:
+      context: ./ca-frontend
+      dockerfile: Dockerfile
+
+    container_name: signpdf-ca-frontend
+    restart: unless-stopped
+
+    depends_on:
+      - ca-service
+
+    networks:
+      - signpdf
+
+
+  nginx:
+    image: nginx:alpine
+    container_name: signpdf-nginx
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+    depends_on:
+      - ca-frontend
+      - ca-service
+
+    networks:
+      - signpdf
+
+
+volumes:
+  postgres_data:
+
+
+networks:
+  signpdf:

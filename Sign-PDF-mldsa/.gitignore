@@ -1,0 +1,10 @@
+# Entorno local y secretos
+.env
+.env.local
+
+# Parches/archivos locales usados durante la integración
+SignPDF_CA_*.zip
+SignPDF_CA_*.zip.sha256
+
+# Archivos del sistema/editor
+.DS_Store
