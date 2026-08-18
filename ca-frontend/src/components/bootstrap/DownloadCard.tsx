@@ -2,16 +2,21 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 
 import { downloadFile } from "../../utils/download";
-import { downloadCAFragment } from "../../services/ca.service";
+import {
+  downloadCAFragment,
+  type CAProfile,
+} from "../../services/ca.service";
 
 interface Props {
   fragmentId: number;
   owner: string;
+  profile: CAProfile;
 }
 
 export default function DownloadCard({
   fragmentId,
   owner,
+  profile,
 }: Props) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,7 +37,8 @@ export default function DownloadCard({
       const response =
         await downloadCAFragment(
           fragmentId,
-          password
+          password,
+          profile
         );
 
       downloadFile(
@@ -85,6 +91,12 @@ export default function DownloadCard({
 
       <p className="mt-1 text-sm text-gray-500">
         Custodio: {owner}
+      </p>
+
+      <p className="mt-1 text-xs font-medium text-blue-700">
+        {profile === "ML_DSA_65"
+          ? "Raíz ML-DSA-65"
+          : "Raíz ECDSA P-256"}
       </p>
 
       <input

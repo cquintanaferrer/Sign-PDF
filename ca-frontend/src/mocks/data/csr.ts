@@ -4,7 +4,7 @@ export const pendingCSR = [
     username: "Carlos Ruiz",
     email: "carlos@test.com",
     algorithm: "ML-DSA-65",
-    createdAt: "2026-08-05",
+    created_at: "2026-08-05T12:00:00Z",
     status: "PENDING",
   },
 
@@ -13,7 +13,7 @@ export const pendingCSR = [
     username: "Laura Díaz",
     email: "laura@test.com",
     algorithm: "ECDSA P-256",
-    createdAt: "2026-08-06",
+    created_at: "2026-08-06T12:00:00Z",
     status: "PENDING",
   },
 ];

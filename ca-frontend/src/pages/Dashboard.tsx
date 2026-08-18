@@ -37,38 +37,36 @@ export default function Dashboard() {
     );
   }
 
+  function profileLabel(profile: string) {
+    return profile === "ML_DSA_65"
+      ? "ML-DSA-65"
+      : "ECDSA P-256";
+  }
+
   return (
     <div className="space-y-8">
-
-      {/* ---------------------------------- */}
-      {/* Encabezado */}
-      {/* ---------------------------------- */}
-
       <div>
         <h1 className="text-3xl font-bold">
           Dashboard
         </h1>
 
         <p className="text-gray-500">
-          Panel de administración de la
-          Autoridad Certificadora.
+          Panel de administración de las raíces ECDSA y ML-DSA.
         </p>
       </div>
 
-      {/* ---------------------------------- */}
-      {/* Estadísticas */}
-      {/* ---------------------------------- */}
-
-      <div className="grid gap-6 md:grid-cols-3">
-
-        <StatCard
-          title="Estado CA"
-          value={
-            data.ca.initialized
-              ? "Inicializada"
-              : "No inicializada"
-          }
-        />
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {data.cas.map((ca) => (
+          <StatCard
+            key={ca.profile}
+            title={`CA ${profileLabel(ca.profile)}`}
+            value={
+              ca.initialized
+                ? "Inicializada"
+                : "No inicializada"
+            }
+          />
+        ))}
 
         <StatCard
           title="Certificados emitidos"
@@ -79,53 +77,70 @@ export default function Dashboard() {
           title="CSR pendientes"
           value={data.csr.pending}
         />
-        
       </div>
 
-      {/* ---------------------------------- */}
-      {/* Configuración criptográfica */}
-      {/* ---------------------------------- */}
+      <div className="rounded-xl bg-white p-6 shadow">
+        <h2 className="text-xl font-bold">
+          Raíces criptográficas
+        </h2>
 
-      {data.ca.initialized && (
-        <div className="rounded-xl bg-white p-6 shadow">
+        <p className="mt-1 text-sm text-gray-500">
+          Cada algoritmo utiliza una clave raíz y fragmentos
+          SLIP-0039 independientes.
+        </p>
 
-          <h2 className="text-xl font-bold">
-            Configuración criptográfica
-          </h2>
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          {data.cas.map((ca) => (
+            <div
+              key={ca.profile}
+              className="rounded-lg border p-5"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="font-bold">
+                  {profileLabel(ca.profile)}
+                </h3>
 
-          <div className="mt-4 grid gap-6 md:grid-cols-2">
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    ca.initialized
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {ca.initialized ? "ACTIVA" : "SIN INICIALIZAR"}
+                </span>
+              </div>
 
-            <div>
-              <p className="text-sm text-gray-500">
-                Algoritmo de la CA
-              </p>
-
-              <p className="mt-1 font-semibold">
-                {data.ca.algorithm}
-              </p>
+              {ca.initialized ? (
+                <div className="mt-4 space-y-2 text-sm">
+                  <p>
+                    <strong>Algoritmo:</strong>{" "}
+                    {ca.algorithm}
+                  </p>
+                  <p>
+                    <strong>Generación:</strong>{" "}
+                    {ca.generation}
+                  </p>
+                  <p>
+                    <strong>Fragmentos aún disponibles:</strong>{" "}
+                    {ca.fragments}
+                  </p>
+                  <p className="break-all font-mono text-xs text-gray-600">
+                    {ca.fingerprint}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-gray-500">
+                  Inicialice esta raíz desde la sección
+                  Autoridades Certificadoras.
+                </p>
+              )}
             </div>
-
-            <div>
-              <p className="text-sm text-gray-500">
-                Fragmentos de recuperación
-              </p>
-
-              <p className="mt-1 font-semibold">
-                {data.fragments.total}
-              </p>
-            </div>
-
-          </div>
-
+          ))}
         </div>
-      )}
-
-      {/* ---------------------------------- */}
-      {/* Actividad reciente */}
-      {/* ---------------------------------- */}
+      </div>
 
       <div className="rounded-xl bg-white p-6 shadow">
-
         <div className="mb-6">
           <h2 className="text-xl font-bold">
             Actividad reciente
@@ -142,7 +157,6 @@ export default function Dashboard() {
           </p>
         ) : (
           <div className="space-y-4">
-
             {data.activity
               .filter(
                 (item) =>
@@ -162,37 +176,31 @@ export default function Dashboard() {
                         ? "CSR recibida"
                         : item.action}
                     </p>
-                      
-                    {/* CSR */}
+
+                    {item.algorithm && (
+                      <p className="mt-1 text-xs font-semibold text-blue-700">
+                        {item.algorithm}
+                      </p>
+                    )}
+
                     {item.type === "CSR" && (
                       <p className="mt-1 text-sm text-gray-500">
                         {item.requester}
                       </p>
                     )}
-            
-                    {/* Certificado emitido */}
-                    {item.type === "CERTIFICATE" &&
-                      item.status === "ISSUED" && (
-                        <p className="mt-1 text-sm text-gray-500">
-                          {item.subject}
-                        </p>
-                      )}
-            
-                    {/* Certificado revocado */}
-                    {item.type === "CERTIFICATE" &&
-                      item.status === "REVOKED" && (
-                        <p className="mt-1 text-sm text-gray-500">
-                          {item.subject}
-                        </p>
-                      )}
-            
-                    {/* Rotación de CA */}
+
+                    {item.type === "CERTIFICATE" && (
+                      <p className="mt-1 text-sm text-gray-500">
+                        {item.subject}
+                      </p>
+                    )}
+
                     {item.type === "CA_ROTATION" && (
                       <div className="mt-1 text-sm text-gray-500">
                         <p>
                           Generación {item.generation}
                         </p>
-                    
+
                         {item.fingerprint && (
                           <p className="font-mono text-xs">
                             {item.fingerprint}
@@ -201,12 +209,12 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="text-right">
                     <p className="text-sm text-gray-500">
                       {formatDate(item.timestamp)}
                     </p>
-                  
+
                     <span
                       className={`mt-1 inline-block rounded-full px-2 py-1 text-xs font-medium ${
                         item.status === "REVOKED"
@@ -221,12 +229,9 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
-
           </div>
         )}
-
       </div>
-
     </div>
   );
 }

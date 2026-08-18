@@ -4,11 +4,13 @@ import toast from "react-hot-toast";
 import {
   getCACertificate,
   getCAPublicKey,
+  type CAProfile,
 } from "../../services/ca.service";
 
 import { downloadFile } from "../../utils/download";
 
 interface Props {
+  profile: CAProfile;
   serialNumber: string;
   fingerprint: string;
   algorithm: string;
@@ -17,6 +19,7 @@ interface Props {
 }
 
 export default function RootCertificateCard({
+  profile,
   serialNumber,
   fingerprint,
   algorithm,
@@ -29,14 +32,19 @@ export default function RootCertificateCard({
   const [loadingPublicKey, setLoadingPublicKey] =
     useState(false);
 
+  const filePrefix =
+    profile === "ML_DSA_65"
+      ? "ca_mldsa65"
+      : "ca_ecdsa_p256";
+
   async function handleDownloadCertificate() {
     try {
       setLoadingCertificate(true);
 
-      const data = await getCACertificate();
+      const data = await getCACertificate(profile);
 
       downloadFile(
-        "ca_root.pem",
+        `${filePrefix}_root.pem`,
         data.certificate
       );
 
@@ -56,10 +64,10 @@ export default function RootCertificateCard({
     try {
       setLoadingPublicKey(true);
 
-      const data = await getCAPublicKey();
+      const data = await getCAPublicKey(profile);
 
       downloadFile(
-        "ca_public_key.pem",
+        `${filePrefix}_public_key.pem`,
         data.publicKey
       );
 
@@ -95,7 +103,9 @@ export default function RootCertificateCard({
         </h2>
 
         <p className="mt-1 text-gray-500">
-          Información pública de la CA
+          {profile === "ML_DSA_65"
+            ? "Raíz poscuántica ML-DSA-65"
+            : "Raíz ECDSA P-256"}
         </p>
       </div>
 
@@ -123,7 +133,7 @@ export default function RootCertificateCard({
 
         <div>
           <p className="text-sm font-medium text-gray-500">
-            Fingerprint
+            Fingerprint SHA-256
           </p>
 
           <p className="mt-1 break-all font-mono text-sm">
@@ -160,7 +170,7 @@ export default function RootCertificateCard({
       <div className="mt-8 border-t pt-6">
 
         <h3 className="mb-4 font-semibold">
-          Archivos públicos de la CA
+          Archivos públicos de esta raíz
         </h3>
 
         <div className="grid gap-3 md:grid-cols-2">

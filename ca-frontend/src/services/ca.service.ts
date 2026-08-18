@@ -1,11 +1,31 @@
 import api from "../api/axios";
 
+export type CAProfile = "ECDSA_P256" | "ML_DSA_65";
+
+export const CA_PROFILES: Array<{
+  value: CAProfile;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "ECDSA_P256",
+    label: "ECDSA P-256",
+    description: "Raíz clásica ECDSA P-256 / SHA-256",
+  },
+  {
+    value: "ML_DSA_65",
+    label: "ML-DSA-65",
+    description: "Raíz poscuántica ML-DSA-65",
+  },
+];
+
 /* =========================================================
    CA STATUS
 ========================================================= */
 
 export interface CAStatus {
   initialized: boolean;
+  profile: CAProfile;
 
   rootCertificate: {
     serialNumber: string;
@@ -23,10 +43,12 @@ export interface CAStatus {
 export interface BootstrapFragment {
   id: number;
   owner: string;
+  algorithm?: CAProfile;
 }
 
 export interface BootstrapResponse {
   message: string;
+  profile: CAProfile;
 
   rootCertificate: {
     certificate: string;
@@ -45,6 +67,7 @@ export interface BootstrapResponse {
 ========================================================= */
 
 export interface FragmentDownloadResponse {
+  profile: CAProfile;
   fragmentId: number;
   filename: string;
   content: string;
@@ -55,6 +78,7 @@ export interface FragmentDownloadResponse {
 ========================================================= */
 
 export interface CACertificateResponse {
+  profile: CAProfile;
   certificate: string;
   serialNumber: string;
   fingerprint: string;
@@ -64,6 +88,7 @@ export interface CACertificateResponse {
 }
 
 export interface CAPublicKeyResponse {
+  profile: CAProfile;
   publicKey: string;
   algorithm: string;
 }
@@ -72,9 +97,12 @@ export interface CAPublicKeyResponse {
    GET CA STATUS
 ========================================================= */
 
-export async function getCAStatus(): Promise<CAStatus> {
+export async function getCAStatus(
+  profile: CAProfile = "ECDSA_P256"
+): Promise<CAStatus> {
   const response = await api.get<CAStatus>(
-    "/ca/status"
+    "/ca/status",
+    { params: { algorithm: profile } }
   );
 
   return response.data;
@@ -84,11 +112,14 @@ export async function getCAStatus(): Promise<CAStatus> {
    BOOTSTRAP CA
 ========================================================= */
 
-export async function bootstrapCA(): Promise<BootstrapResponse> {
-  const response =
-    await api.post<BootstrapResponse>(
-      "/ca/bootstrap"
-    );
+export async function bootstrapCA(
+  profile: CAProfile = "ECDSA_P256"
+): Promise<BootstrapResponse> {
+  const response = await api.post<BootstrapResponse>(
+    "/ca/bootstrap",
+    undefined,
+    { params: { algorithm: profile } }
+  );
 
   return response.data;
 }
@@ -99,15 +130,14 @@ export async function bootstrapCA(): Promise<BootstrapResponse> {
 
 export async function downloadCAFragment(
   fragmentId: number,
-  password: string
+  password: string,
+  profile: CAProfile = "ECDSA_P256"
 ): Promise<FragmentDownloadResponse> {
-  const response =
-    await api.post<FragmentDownloadResponse>(
-      `/ca/fragments/${fragmentId}/download`,
-      {
-        password,
-      }
-    );
+  const response = await api.post<FragmentDownloadResponse>(
+    `/ca/fragments/${fragmentId}/download`,
+    { password },
+    { params: { algorithm: profile } }
+  );
 
   return response.data;
 }
@@ -116,11 +146,13 @@ export async function downloadCAFragment(
    GET ROOT CERTIFICATE
 ========================================================= */
 
-export async function getCACertificate(): Promise<CACertificateResponse> {
-  const response =
-    await api.get<CACertificateResponse>(
-      "/ca/certificate"
-    );
+export async function getCACertificate(
+  profile: CAProfile = "ECDSA_P256"
+): Promise<CACertificateResponse> {
+  const response = await api.get<CACertificateResponse>(
+    "/ca/certificate",
+    { params: { algorithm: profile } }
+  );
 
   return response.data;
 }
@@ -129,11 +161,13 @@ export async function getCACertificate(): Promise<CACertificateResponse> {
    GET PUBLIC KEY
 ========================================================= */
 
-export async function getCAPublicKey(): Promise<CAPublicKeyResponse> {
-  const response =
-    await api.get<CAPublicKeyResponse>(
-      "/ca/public-key"
-    );
+export async function getCAPublicKey(
+  profile: CAProfile = "ECDSA_P256"
+): Promise<CAPublicKeyResponse> {
+  const response = await api.get<CAPublicKeyResponse>(
+    "/ca/public-key",
+    { params: { algorithm: profile } }
+  );
 
   return response.data;
 }
@@ -174,6 +208,7 @@ export async function rotateCA(
     );
   });
 
+  // La rotación existente del proyecto permanece limitada a ECDSA.
   const response = await api.post(
     "/ca/rotate",
     formData

@@ -162,6 +162,10 @@ export default function IssueCertificateModal({
           </p>
 
           <p className="mt-1 text-gray-500">
+            Email: {csr.email || "—"}
+          </p>
+
+          <p className="mt-1 text-gray-500">
             Algoritmo: {csr.algorithm}
           </p>
 
@@ -194,6 +198,12 @@ export default function IssueCertificateModal({
           <p className="mt-2 text-sm text-gray-700">
             Se requieren al menos{" "}
             <strong>3 de 4 fragmentos</strong>.
+          </p>
+
+          <p className="mt-2 text-sm font-semibold text-blue-700">
+            Use únicamente fragmentos de la raíz {csr.algorithm}.
+            La CA selecciona automáticamente la raíz a partir
+            del algoritmo registrado en la CSR.
           </p>
 
           <p className="mt-2 font-semibold">

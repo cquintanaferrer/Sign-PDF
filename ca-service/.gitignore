@@ -4,3 +4,24 @@ __pycache__/
 .env
 .pytest_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+
+# Fragmentos de claves: nunca deben subirse al repositorio
+*.sss
+
+# Datos generados por las pruebas locales
+/test_*.csr
+/test_*_private_key.pem
+/test_*_public_key.pem
+/test_*_cert.pem
+/mldsa_sign_verify_test.py
+
+# Scripts/pruebas temporales usados durante la integración ML-DSA/ECDSA
+app/tests/generate_test_mldsa_csr.py
+app/tests/test_mldsa_ca.py
+app/tests/test_csr_identity.py
+app/tests/generate_test_ecdsa_regression_csr.py
+app/tests/ecdsa_regression_sign_verify.py
+app/tests/generate_test_ecdsa_csr.py
+app/tests/ecdsa_sign_verify_test.py

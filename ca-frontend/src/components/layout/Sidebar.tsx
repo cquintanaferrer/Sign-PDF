@@ -15,7 +15,7 @@ export default function Sidebar() {
         </NavLink>
 
         <NavLink className="px-6 py-3 hover:bg-slate-700" to="/bootstrap">
-          Iniciar CA
+          Raíces CA
         </NavLink>
 
         <NavLink className="px-6 py-3 hover:bg-slate-700" to="/certificates">

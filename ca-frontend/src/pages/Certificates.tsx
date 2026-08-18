@@ -1,6 +1,28 @@
 import { useIssuedCertificates } from "../hooks/useIssuedCertificates";
 import { useRevokeCertificate } from "../hooks/useRevokeCertificate";
 
+
+/**
+ * Mantiene en la tabla el mismo formato de Subject que usaba ECDSA:
+ *   CN=usuario,O=organizacion,C=MX
+ *
+ * No modifica el certificado almacenado ni su estructura X.509.
+ * Solo oculta visualmente emailAddress si algún certificado ya emitido
+ * lo contiene dentro del Subject.
+ */
+function subjectComoECDSA(subject: string): string {
+  return subject
+    .split(",")
+    .filter((part) => {
+      const value = part.trim().toLowerCase();
+      return !(
+        value.startsWith("1.2.840.113549.1.9.1=") ||
+        value.startsWith("emailaddress=")
+      );
+    })
+    .join(",");
+}
+
 export default function Certificates() {
   const {
     data,
@@ -133,7 +155,7 @@ export default function Certificates() {
 
                     <td className="px-6 py-4">
                       <p className="font-medium">
-                        {certificate.subject}
+                        {subjectComoECDSA(certificate.subject)}
                       </p>
                     </td>
 

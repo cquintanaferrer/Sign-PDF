@@ -260,6 +260,7 @@ def rotate_ca(
         .filter(
             CertificateAuthority.initialized.is_(True),
             CertificateAuthority.is_active.is_(True),
+            CertificateAuthority.algorithm == "ECDSA P-256 / SHA-256",
         )
         .order_by(
             CertificateAuthority.generation.desc()

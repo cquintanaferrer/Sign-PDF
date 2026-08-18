@@ -1,7 +1,15 @@
 import hashlib
+
 from app.core.config import settings
+from app.crypto.algorithm_registry import (
+    ECDSA_PROFILE,
+    MLDSA65_PROFILE,
+    algorithm_label,
+    normalize_profile,
+)
 from app.crypto.encryption import encrypt_fragment
 from app.crypto.keys import (
+    ca_secret_bytes,
     certificate_fingerprint,
     generate_ca_private_key,
     generate_root_certificate,
@@ -21,140 +29,63 @@ CUSTODIANS = [
 ]
 
 
-def bootstrap_ca(db):
+def bootstrap_ca(
+    db,
+    algorithm: str = ECDSA_PROFILE,
+):
     """
-    Inicializa la Autoridad Certificadora.
+    Inicializa una raíz lógica dentro del mismo servicio de CA.
 
-    Flujo:
+    ECDSA_P256:
+        scalar P-256 de 32 bytes -> SLIP-0039 3-of-4
 
-        P-256
-          ↓
-        certificado raíz
-          ↓
-        private scalar
-          ↓
-        SLIP-0039 3-of-4
-          ↓
-        cifrado individual de los 4 shares
-          ↓
-        almacenamiento de los fragmentos cifrados
+    ML_DSA_65:
+        seed ML-DSA-65 de 32 bytes -> SLIP-0039 3-of-4
+
+    Las dos raíces son independientes y pueden coexistir en PostgreSQL.
     """
+    profile = normalize_profile(algorithm)
+    stored_algorithm = algorithm_label(profile)
 
-    # --------------------------------------------------
-    # 1. Comprobar si la CA ya existe
-    # --------------------------------------------------
-
-    existing_ca = get_ca(db)
+    existing_ca = get_ca(db, algorithm=profile)
 
     if existing_ca and existing_ca.initialized:
         raise ValueError(
-            "La Autoridad Certificadora ya fue inicializada."
+            f"La Autoridad Certificadora {stored_algorithm} ya fue inicializada."
         )
 
-    # --------------------------------------------------
-    # 2. Generar clave privada P-256
-    # --------------------------------------------------
-
-    private_key = generate_ca_private_key()
+    private_key = generate_ca_private_key(profile)
     public_key_pem = serialize_public_key(private_key)
-    private_value = (
-        private_key
-        .private_numbers()
-        .private_value
-    )
+    private_secret = ca_secret_bytes(private_key, profile)
 
-    private_scalar = private_value.to_bytes(
-        32,
-        byteorder="big",
-    )
+    private_key_hash = hashlib.sha256(private_secret).hexdigest()
 
-    private_key_hash = hashlib.sha256(
-        private_scalar
-    ).hexdigest()
+    certificate = generate_root_certificate(private_key)
+    certificate_pem = serialize_certificate(certificate)
+    fingerprint = certificate_fingerprint(certificate)
+    serial_number = str(certificate.serial_number)
 
-    # --------------------------------------------------
-    # 3. Generar certificado raíz
-    # --------------------------------------------------
-
-    certificate = generate_root_certificate(
-        private_key
-    )
-
-    certificate_pem = serialize_certificate(
-        certificate
-    )
-
-    fingerprint = certificate_fingerprint(
-        certificate
-    )
-
-    serial_number = str(
-        certificate.serial_number
-    )
-
-    # --------------------------------------------------
-    # 4. Generar los 4 shares mediante SLIP-0039
-    # --------------------------------------------------
-
-    shares = split_secret(
-        private_scalar
-    )
+    shares = split_secret(private_secret)
 
     if len(shares) != 4:
-        raise RuntimeError(
-            "SLIP-0039 no generó exactamente "
-            "4 fragmentos."
-        )
+        raise RuntimeError("SLIP-0039 no generó exactamente 4 fragmentos.")
 
-    # --------------------------------------------------
-    # 5. Crear/actualizar registro de CA
-    # --------------------------------------------------
-
-    if existing_ca is None:
-
-        ca = CertificateAuthority(
+    ca = CertificateAuthority(
         initialized=True,
-        root_certificate=(
-            certificate_pem.decode("utf-8")
-        ),
+        root_certificate=certificate_pem.decode("utf-8"),
         public_key=public_key_pem,
         serial_number=serial_number,
         fingerprint=fingerprint,
-        algorithm="ECDSA P-256 / SHA-256",
+        algorithm=stored_algorithm,
         issued_at=certificate.not_valid_before_utc,
         expires_at=certificate.not_valid_after_utc,
-        private_key_hash=private_key_hash
-        )
+        private_key_hash=private_key_hash,
+        is_active=True,
+        generation=1,
+    )
 
-        db.add(ca)
-
-        # Necesitamos que SQLAlchemy obtenga el ID
-        # antes de crear los fragmentos.
-        db.flush()
-
-    else:
-
-        ca = existing_ca
-        ca.public_key = public_key_pem
-        ca.initialized = True
-        ca.root_certificate = (
-            certificate_pem.decode("utf-8")
-        )
-        ca.serial_number = serial_number
-        ca.fingerprint = fingerprint
-        ca.algorithm = (
-            "ECDSA P-256 / SHA-256"
-        )
-        ca.issued_at = (
-            certificate.not_valid_before_utc
-        )
-        ca.expires_at = (
-            certificate.not_valid_after_utc
-        )
-
-    # --------------------------------------------------
-    # 6. Contraseñas de los custodios
-    # --------------------------------------------------
+    db.add(ca)
+    db.flush()
 
     passwords = [
         settings.authority1_password,
@@ -163,84 +94,44 @@ def bootstrap_ca(db):
         settings.authority4_password,
     ]
 
-    # Verificación defensiva
-    if len(passwords) != 4:
-        raise RuntimeError(
-            "Deben existir exactamente cuatro "
-            "contraseñas de custodios."
-        )
-
-    # --------------------------------------------------
-    # 7. Cifrar y guardar cada fragmento
-    # --------------------------------------------------
-
     for fragment_id, (share, password, owner) in enumerate(
-        zip(
-            shares,
-            passwords,
-            CUSTODIANS,
-        ),
+        zip(shares, passwords, CUSTODIANS),
         start=1,
     ):
-
         encrypted = encrypt_fragment(
             fragment=share,
             password=password,
             fragment_id=fragment_id,
         )
 
-        fragment = CAFragment(
-            fragment_id=fragment_id,
-            owner_username=owner,
-            encrypted_content=encrypted.decode(
-                "utf-8"
-            ),
-            ca_id=ca.id,
+        db.add(
+            CAFragment(
+                fragment_id=fragment_id,
+                owner_username=owner,
+                encrypted_content=encrypted.decode("utf-8"),
+                ca_id=ca.id,
+            )
         )
-
-        db.add(fragment)
-
-    # --------------------------------------------------
-    # 8. Guardar todo
-    # --------------------------------------------------
 
     db.commit()
 
-    # --------------------------------------------------
-    # 9. Respuesta al frontend
-    # --------------------------------------------------
-
     return {
-        "message": (
-            "Autoridad Certificadora "
-            "generada correctamente."
-        ),
-
+        "message": f"Autoridad Certificadora {stored_algorithm} generada correctamente.",
+        "profile": profile,
         "rootCertificate": {
-            "certificate": (
-                certificate_pem.decode("utf-8")
-            ),
+            "certificate": certificate_pem.decode("utf-8"),
             "serialNumber": serial_number,
             "fingerprint": fingerprint,
-            "algorithm": (
-                "ECDSA P-256 / SHA-256"
-            ),
-            "issuedAt": (
-                certificate.not_valid_before_utc
-            ),
-            "expiresAt": (
-                certificate.not_valid_after_utc
-            ),
+            "algorithm": stored_algorithm,
+            "issuedAt": certificate.not_valid_before_utc,
+            "expiresAt": certificate.not_valid_after_utc,
         },
-
         "fragments": [
             {
                 "id": index,
                 "owner": owner,
+                "algorithm": profile,
             }
-            for index, owner in enumerate(
-                CUSTODIANS,
-                start=1,
-            )
+            for index, owner in enumerate(CUSTODIANS, start=1)
         ],
     }
