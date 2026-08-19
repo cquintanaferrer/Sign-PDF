@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.env
+sign_pdf.db
+.pytest_cache/
