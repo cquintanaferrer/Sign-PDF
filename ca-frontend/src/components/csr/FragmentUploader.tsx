@@ -54,14 +54,14 @@ export default function FragmentUploader({
 
       <div className="mt-4">
         <label className="mb-2 block text-sm font-medium">
-          Contraseña del cuidador
+          Contraseña del fragmento
         </label>
 
         <input
           type="password"
           value={password}
           onChange={handlePasswordChange}
-          placeholder="Contraseña"
+          placeholder="Contraseña elegida al descargar el .sss"
           className="w-full rounded-lg border px-3 py-2"
         />
       </div>

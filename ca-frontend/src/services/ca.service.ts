@@ -130,12 +130,16 @@ export async function bootstrapCA(
 
 export async function downloadCAFragment(
   fragmentId: number,
-  password: string,
+  custodianPassword: string,
+  fragmentPassword: string,
   profile: CAProfile = "ECDSA_P256"
 ): Promise<FragmentDownloadResponse> {
   const response = await api.post<FragmentDownloadResponse>(
     `/ca/fragments/${fragmentId}/download`,
-    { password },
+    {
+      custodian_password: custodianPassword,
+      fragment_password: fragmentPassword,
+    },
     { params: { algorithm: profile } }
   );
 

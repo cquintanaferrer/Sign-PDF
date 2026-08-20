@@ -517,6 +517,8 @@ def rotate_ca(
 
         from app.core.config import settings
 
+        # Protección temporal de los nuevos shares en servidor. La
+        # contraseña final de cada .sss se elige al descargarlo.
         passwords = [
             settings.authority1_password,
             settings.authority2_password,

@@ -206,6 +206,11 @@ export default function IssueCertificateModal({
             del algoritmo registrado en la CSR.
           </p>
 
+          <p className="mt-2 text-sm text-gray-700">
+            Para cada archivo .sss introduzca la contraseña del fragmento
+            que se eligió al descargarlo, no la contraseña de acceso del custodio.
+          </p>
+
           <p className="mt-2 font-semibold">
             Fragmentos seleccionados:{" "}
             {selectedCount} / 4

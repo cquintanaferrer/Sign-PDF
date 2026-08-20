@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.authorization import require_ca_admin
 from app.core.database import get_db
 from app.core.security import verify_password
+from app.crypto.encryption import decrypt_fragment, encrypt_fragment
 from app.crypto.algorithm_registry import ECDSA_PROFILE, normalize_profile
 from app.models.ca_fragment import CAFragment
 from app.models.ca_requests import ReconstructCARequest
@@ -22,7 +23,8 @@ router = APIRouter(
 
 
 class FragmentDownloadRequest(BaseModel):
-    password: str
+    custodian_password: str = Field(min_length=1, max_length=256)
+    fragment_password: str = Field(min_length=8, max_length=256)
 
 
 @router.get("/status")
@@ -218,15 +220,53 @@ def download_fragment(
         raise HTTPException(status_code=403, detail="El custodio está desactivado.")
     if user.role != "CA_CUSTODIAN":
         raise HTTPException(status_code=403, detail="El usuario no es un custodio.")
-    if not verify_password(data.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Contraseña incorrecta.")
+    if not verify_password(
+        data.custodian_password,
+        user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Contraseña del custodio incorrecta.",
+        )
 
-    encrypted_content = fragment.encrypted_content
     current_fragment_id = fragment.fragment_id
+
+    # Durante el bootstrap el share queda protegido temporalmente con la
+    # contraseña de la cuenta del custodio para no persistirlo en claro.
+    # Al descargarlo se descifra solo en memoria y se vuelve a cifrar con
+    # una contraseña NUEVA elegida en ese momento para el archivo .sss.
+    try:
+        stored_fragment_id, share = decrypt_fragment(
+            encrypted_data=fragment.encrypted_content.encode("utf-8"),
+            password=data.custodian_password,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No fue posible recuperar el fragmento almacenado. "
+                "Verifique que las credenciales del custodio sean las "
+                "mismas con las que se inicializó esta raíz."
+            ),
+        ) from exc
+
+    if stored_fragment_id != current_fragment_id:
+        raise HTTPException(
+            status_code=409,
+            detail="El identificador interno del fragmento no coincide.",
+        )
+
+    encrypted_for_download = encrypt_fragment(
+        fragment=share,
+        password=data.fragment_password,
+        fragment_id=current_fragment_id,
+    )
 
     prefix = "ecdsa_p256" if profile == ECDSA_PROFILE else "mldsa65"
     filename = f"{prefix}_fragment_{current_fragment_id}.sss"
 
+    # La copia temporal del servidor se elimina después de producir el
+    # archivo protegido con la contraseña elegida por el custodio.
     db.delete(fragment)
     db.commit()
 
@@ -234,7 +274,7 @@ def download_fragment(
         "profile": profile,
         "fragmentId": current_fragment_id,
         "filename": filename,
-        "content": encrypted_content,
+        "content": encrypted_for_download.decode("utf-8"),
     }
 
 

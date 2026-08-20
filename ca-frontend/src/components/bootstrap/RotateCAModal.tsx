@@ -185,8 +185,8 @@ export default function RotateCAModal({
           </h3>
 
           <p className="mt-2 text-sm text-gray-700">
-            Introduzca nuevamente las contraseñas
-            de los custodios junto con sus fragmentos.
+            Introduzca la contraseña propia de cada archivo .sss,
+            elegida cuando se descargó el fragmento.
           </p>
 
           <p className="mt-2 font-semibold">

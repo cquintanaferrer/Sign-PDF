@@ -14,7 +14,7 @@ MAXIMUM_SHARES = 4
 class FragmentInput:
     """
     Fragmento cifrado recibido junto con la contraseña
-    del custodio correspondiente.
+    elegida específicamente para ese archivo .sss.
     """
 
     encrypted_content: bytes
@@ -78,7 +78,7 @@ def reconstruct_ca_secret(
 
         if not fragment.password:
             raise ValueError(
-                "La contraseña de un custodio "
+                "La contraseña de un fragmento "
                 "no puede estar vacía."
             )
 

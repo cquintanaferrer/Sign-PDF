@@ -1,4 +1,4 @@
-# 🔒 SignPDF — CA y firma de PDF con ECDSA + ML-DSA-65
+#  SignPDF — CA y firma de PDF con ECDSA + ML-DSA-65
 
 SignPDF integra una **Autoridad Certificadora (CA)** y un **cliente web** para generar llaves, solicitar certificados X.509, firmar documentos PDF y verificar las firmas.
 
@@ -13,7 +13,7 @@ El principio de seguridad principal es el mismo para ambos algoritmos:
 
 ---
 
-# 🧩 Arquitectura
+#  Arquitectura
 
 ```text
                          NGINX :80
@@ -45,7 +45,7 @@ Interfaces:
 
 ---
 
-# 🛡️ ML-DSA-65 implementado
+#  ML-DSA-65 implementado
 
 ## Autoridad Certificadora
 
@@ -74,6 +74,34 @@ CSR ML-DSA-65    ──► Root ML-DSA-65
 
 Los fragmentos de ambas raíces **no son intercambiables**.
 
+### Contraseña de cada fragmento
+
+La contraseña del archivo `.sss` **no queda fijada en el `.env`**. Durante el bootstrap, cada share se conserva temporalmente cifrado en el servidor usando la credencial de su custodio para evitar persistirlo en claro.
+
+Al descargar un fragmento, la interfaz solicita dos datos distintos:
+
+1. **Contraseña del custodio:** autentica y autoriza la descarga.
+2. **Nueva contraseña del fragmento:** se elige en ese momento, se confirma y se usa con Argon2id + AES-256-GCM para volver a cifrar el share antes de entregarlo como `.sss`.
+
+```text
+Bootstrap
+   │
+   ├─ share protegido temporalmente en la CA
+   │
+Descarga
+   │
+   ├─ contraseña del custodio -> autoriza
+   └─ contraseña NUEVA del fragmento
+              │
+              v
+        Argon2id + AES-256-GCM
+              │
+              v
+        fragment_N.sss
+```
+
+La contraseña elegida para el fragmento será la que deberá introducirse posteriormente al emitir certificados o reconstruir temporalmente la llave de la CA. La CA elimina su copia temporal del fragmento después de descargarlo.
+
 ## Cliente ML-DSA
 
 El cliente web ahora permite:
@@ -101,7 +129,7 @@ La llave privada ML-DSA se almacena en formato seed de 32 bytes dentro de PKCS#8
 
 ---
 
-# 🔑 Generación y descarga de llaves
+#  Generación y descarga de llaves
 
 Desde **Cliente → Mis llaves** se puede elegir:
 
@@ -163,7 +191,7 @@ La contraseña:
 
 ---
 
-# 📜 Solicitud de certificados ECDSA y ML-DSA
+#  Solicitud de certificados ECDSA y ML-DSA
 
 Desde **Cliente → Certificado** el usuario selecciona:
 
@@ -213,7 +241,7 @@ La consulta se hace mediante el backend autenticado del cliente, que a su vez co
 
 ---
 
-# ✍️ Nuevo flujo de firma PDF — la llave privada permanece en el cliente
+#  Nuevo flujo de firma PDF — la llave privada permanece en el cliente
 
 El flujo anterior enviaba la llave privada al backend para que pyHanko ejecutara ECDSA. Ese mecanismo fue sustituido.
 
@@ -281,7 +309,7 @@ Firma raw: 3309 bytes
 
 ---
 
-# ✅ Verificación de un PDF firmado
+#  Verificación de un PDF firmado
 
 Desde **Cliente → Validar PDF** únicamente se selecciona el PDF firmado.
 
@@ -351,7 +379,7 @@ Este flujo es el mismo para **ECDSA y ML-DSA**. Para PDFs que utilizan secciones
 
 
 
-# 🔎 Verificación directa de certificados
+#  Verificación directa de certificados
 
 Además de **Validar PDF**, el cliente conserva una pantalla independiente **Validar certificado**.
 
@@ -382,7 +410,7 @@ Esta verificación no necesita un PDF.
 
 ---
 
-# 🧾 Certificados de usuario
+#  Certificados de usuario
 
 Los nuevos certificados emitidos por la CA incluyen explícitamente, si la CSR no los proporciona:
 
@@ -399,7 +427,7 @@ Esto deja claro que son certificados finales destinados a firma y no certificado
 
 ---
 
-# 🚀 Ejecución con Docker
+#  Ejecución con Docker
 
 ## 1. Variables de entorno
 
@@ -416,6 +444,8 @@ AUTHORITY2_PASSWORD=...
 AUTHORITY3_PASSWORD=...
 AUTHORITY4_PASSWORD=...
 ```
+
+`AUTHORITY1_PASSWORD` a `AUTHORITY4_PASSWORD` son credenciales de acceso de los custodios. **No son la contraseña final de los archivos `.sss`**: cada contraseña de fragmento se define por separado en la interfaz al descargarlo.
 
 No subas `.env` al repositorio.
 
@@ -466,7 +496,7 @@ Para cada algoritmo realiza el mismo recorrido.
 ## ECDSA
 
 1. Crear raíz ECDSA desde la UI de CA si aún no existe.
-2. Descargar y custodiar sus 4 fragmentos.
+2. Descargar y custodiar sus 4 fragmentos, definiendo una contraseña independiente para cada `.sss`.
 3. Entrar al cliente.
 4. Generar llaves ECDSA.
 5. Definir contraseña y descargar la privada cifrada.
@@ -486,7 +516,7 @@ Una CSR ECDSA debe utilizar fragmentos ECDSA y una CSR ML-DSA debe utilizar frag
 
 ---
 
-# 📦 Dependencias relevantes
+#  Dependencias relevantes
 
 ## Frontend cliente
 
@@ -518,7 +548,7 @@ Argon2id + AES-256-GCM para fragmentos
 
 ---
 
-# 🔧 Otros cambios incluidos
+#  Otros cambios incluidos
 
 Después de la incorporación de ML-DSA y del nuevo flujo de firma se realizaron estas correcciones adicionales:
 
@@ -538,9 +568,4 @@ Después de la incorporación de ML-DSA y del nuevo flujo de firma se realizaron
 
 ---
 
-# ⚠️ Alcance / pendientes
 
-- El código OTP del cliente sigue siendo un mecanismo de demostración y debe sustituirse por un segundo factor real si se despliega fuera del entorno académico.
-- Las operaciones de firma PDF preparadas se conservan temporalmente en memoria del backend durante 15 minutos. Para un despliegue con varios workers o alta disponibilidad conviene mover este estado temporal a Redis u otro almacén compartido.
-- La rotación/cross-signing ML-DSA puede evolucionar por separado de la emisión actual de certificados.
-- Para producción se requiere una revisión criptográfica y de seguridad formal de la implementación de cliente.

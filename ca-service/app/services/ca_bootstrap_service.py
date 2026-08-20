@@ -87,6 +87,10 @@ def bootstrap_ca(
     db.add(ca)
     db.flush()
 
+    # Protección temporal en servidor: los shares nunca se guardan en claro.
+    # Estas contraseñas son las credenciales de las cuentas custodias y NO
+    # son la contraseña final del archivo .sss. Al descargar, cada custodio
+    # elige una contraseña independiente y el share se vuelve a cifrar con ella.
     passwords = [
         settings.authority1_password,
         settings.authority2_password,

@@ -71,19 +71,23 @@ Agregar:
 ```env
 POSTGRES_DB=signpdf
 POSTGRES_USER=signpdf
-POSTGRES_PASSWORD=<CAMBIAR_POR_PASSWORD_SEGURO>
+POSTGRES_PASSWORD=<DEFINIR_PASSWORD_POSTGRES>
 
 JWT_SECRET=<GENERAR_SECRETO_ALEATORIO>
 
-CA_ADMIN_PASSWORD=<CAMBIAR_PASSWORD_ADMIN>
+CA_ADMIN_PASSWORD=<DEFINIR_PASSWORD_ADMIN>
 
-AUTHORITY1_PASSWORD=<CAMBIAR_PASSWORD_AUTHORITY1>
-AUTHORITY2_PASSWORD=<CAMBIAR_PASSWORD_AUTHORITY2>
-AUTHORITY3_PASSWORD=<CAMBIAR_PASSWORD_AUTHORITY3>
-AUTHORITY4_PASSWORD=<CAMBIAR_PASSWORD_AUTHORITY4>
+AUTHORITY1_PASSWORD=<DEFINIR_PASSWORD_AUTHORITY1>
+AUTHORITY2_PASSWORD=<DEFINIR_PASSWORD_AUTHORITY2>
+AUTHORITY3_PASSWORD=<DEFINIR_PASSWORD_AUTHORITY3>
+AUTHORITY4_PASSWORD=<DEFINIR_PASSWORD_AUTHORITY4>
 ```
-El JWT se puede generar con:
-```
+
+Las variables `AUTHORITY1_PASSWORD` a `AUTHORITY4_PASSWORD` son las contraseñas de acceso de las cuentas custodias. **No son las contraseñas finales de los fragmentos `.sss`.** Cada custodio elegirá una contraseña nueva para su fragmento al descargarlo desde la interfaz de la CA.
+
+Para generar un valor aleatorio para `JWT_SECRET` puede utilizarse:
+
+```bash
 openssl rand -hex 32
 ```
 
@@ -188,7 +192,7 @@ Las credenciales del administrador serán las definidas en `.env`:
 
 ```text
 Usuario: admin
-Contraseña: admin123
+Contraseña: valor de CA_ADMIN_PASSWORD
 ```
 
 ---
@@ -240,7 +244,7 @@ Seleccionar:
 ECDSA P-256 / SHA-256
 ```
 
-Realizar el bootstrap y descargar los fragmentos SLIP-39.
+Realizar el bootstrap y descargar los fragmentos SLIP-39. Al descargar cada fragmento, la interfaz pedirá primero la contraseña de acceso del custodio y después una **nueva contraseña para proteger ese `.sss`**. Esa nueva contraseña debe conservarse junto con el fragmento.
 
 La configuración utilizada es:
 
@@ -259,9 +263,23 @@ Seleccionar:
 ML-DSA-65
 ```
 
-Realizar el bootstrap y descargar sus propios fragmentos SLIP-39.
+Realizar el bootstrap y descargar sus propios fragmentos SLIP-39. Para cada archivo se elige su contraseña de fragmento en el momento de la descarga.
 
-Los fragmentos de ECDSA y ML-DSA son independientes y **no deben mezclarse**.
+Los fragmentos de ECDSA y ML-DSA son independientes y **no deben mezclarse**. Tampoco debe confundirse la contraseña de acceso del custodio con la contraseña elegida para su `.sss`.
+
+### Flujo de contraseña de los fragmentos
+
+```text
+Contraseña AUTHORITYn_PASSWORD
+        │
+        └── autentica al custodio para descargar
+
+Nueva contraseña elegida en la descarga
+        │
+        └── cifra fragment_n.sss con Argon2id + AES-256-GCM
+```
+
+Al emitir certificados o reconstruir una raíz, debe introducirse la **contraseña elegida para el `.sss`**, no la contraseña de acceso del custodio.
 
 ---
 
@@ -567,4 +585,12 @@ Y crear por primera vez las raíces ECDSA y ML-DSA desde la interfaz de la CA.
 
 ---
 
+## Notas
 
+- `.env` no debe subirse al repositorio.
+- Los fragmentos SLIP-39 (`*.sss`) no deben subirse a Git.
+- Las llaves privadas de los usuarios no deben subirse al repositorio.
+- Las llaves privadas se protegen con contraseña antes de descargarse.
+- ECDSA y ML-DSA utilizan raíces independientes.
+- La firma del PDF se realiza localmente en el navegador.
+- El backend prepara y finaliza CMS/PAdES, pero nunca recibe la llave privada ni su contraseña.
