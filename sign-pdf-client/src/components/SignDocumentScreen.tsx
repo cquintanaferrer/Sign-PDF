@@ -1,611 +1,1367 @@
 import { useState, useRef, useCallback } from 'react'
-import { CheckIcon, LockIcon, DownloadIcon, ShieldIcon } from './icons'
+import {
+  CheckIcon,
+  LockIcon,
+  DownloadIcon,
+  ShieldIcon,
+  FileIcon,
+} from './icons'
 
 type Algorithm = 'ECDSA_P256' | 'ML_DSA_65'
-type SignState = 'idle' | 'loaded' | 'signing' | 'signed'
 
-const SIGN_STEPS = [
-  { text: 'Leyendo documento PDF y extrayendo contenido binario...' },
-  { text: 'Calculando hash SHA-256 del documento...' },
-  { text: 'Cargando llave privada desde contexto local (Web Crypto API)...' },
-  { text: 'Calculando hash de primitivas criptográficas (llave pública + metadatos)...' },
-  { text: 'Concatenando hash del documento con hash de primitivas...' },
-  { text: 'Firmando bloque concatenado con llave privada...' },
-  { text: 'Construyendo bloque de firma PDF (ByteRange + Contents)...' },
-  { text: 'Anexando firma criptográfica al final del documento...' },
-]
-
-// Deterministic fake hex from a seed string
-function fakeHash(seed: string, len = 64): string {
-  let h = 0
-  for (let i = 0; i < seed.length; i++) {
-    h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0
-  }
-  const hex = '0123456789abcdef'
-  let result = ''
-  let state = Math.abs(h)
-  for (let i = 0; i < len; i++) {
-    state = (state * 1664525 + 1013904223) >>> 0
-    result += hex[state % 16]
-  }
-  return result
-}
-
-function fakeBase64(seed: string, len = 88): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-  let state = seed.split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0)
-  let result = ''
-  for (let i = 0; i < len; i++) {
-    state = (state * 1664525 + 1013904223) >>> 0
-    result += chars[state % chars.length]
-  }
-  return result + '=='
-}
+type SignState =
+  | 'idle'
+  | 'ready'
+  | 'signing'
+  | 'signed'
+  | 'error'
 
 interface SignDocumentScreenProps {
   algorithm: Algorithm
   userName: string
   userEmail: string
   certSerial: string
+  token: string
   onBack: () => void
 }
 
-interface DocInfo {
+interface SelectedFile {
+  file: File
   name: string
   size: number
-  pages: number
-  docHash: string
-  primitiveHash: string
-  concatHash: string
-  signature: string
-  pubKeyHash: string
-  signedAt: string
 }
 
-export function SignDocumentScreen({ algorithm, userName, userEmail, certSerial, onBack }: SignDocumentScreenProps) {
-  const [signState, setSignState] = useState<SignState>('idle')
-  const [isDragging, setIsDragging] = useState(false)
-  const [docInfo, setDocInfo] = useState<DocInfo | null>(null)
-  const [currentStep, setCurrentStep] = useState(0)
-  const [completedSteps, setCompletedSteps] = useState<number[]>([])
-  const [signedCount, setSignedCount] = useState(0)
-  const fileRef = useRef<HTMLInputElement>(null)
 
-  const algoLabel = algorithm === 'ECDSA_P256' ? 'ECDSA P-256' : 'ML-DSA-65'
+export function SignDocumentScreen({
+  algorithm,
+  userName,
+  userEmail,
+  certSerial,
+  token,
+  onBack,
+}: SignDocumentScreenProps) {
+  const [signState, setSignState] =
+    useState<SignState>('idle')
 
-  const loadFile = useCallback((file: File) => {
-    if (!file.name.toLowerCase().endsWith('.pdf')) return
-    const docHash = fakeHash(file.name + file.size)
-    const pubKeyHash = fakeHash('pubkey_' + userEmail + algorithm)
-    const primitiveHash = fakeHash(pubKeyHash + certSerial + algorithm)
-    const concatHash = fakeHash(docHash + primitiveHash)
-    const signature = fakeBase64(concatHash + 'sig')
+  const [isDragging, setIsDragging] =
+    useState(false)
 
-    setDocInfo({
-      name: file.name,
-      size: file.size,
-      pages: Math.max(1, Math.floor(file.size / 45000)),
-      docHash,
-      primitiveHash,
-      concatHash,
-      signature,
-      pubKeyHash,
-      signedAt: new Date().toISOString(),
-    })
-    setSignState('loaded')
-  }, [userEmail, algorithm, certSerial])
+  const [pdfFile, setPdfFile] =
+    useState<SelectedFile | null>(null)
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file) loadFile(file)
-  }
+  const [privateKeyFile, setPrivateKeyFile] =
+    useState<SelectedFile | null>(null)
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) loadFile(file)
-  }
+  const [certificateFile, setCertificateFile] =
+    useState<SelectedFile | null>(null)
 
-  const handleSign = () => {
-    setSignState('signing')
-    setCurrentStep(0)
-    setCompletedSteps([])
+  const [signedPdf, setSignedPdf] =
+    useState<Blob | null>(null)
 
-    const DURATIONS = [600, 900, 700, 1100, 500, 1200, 800, 600]
-    let stepIdx = 0
+  const [signedFileName, setSignedFileName] =
+    useState('signed-document.pdf')
 
-    const runStep = () => {
-      if (stepIdx >= SIGN_STEPS.length) {
-        setTimeout(() => {
-          setSignState('signed')
-          setSignedCount(c => c + 1)
-        }, 400)
-        return
-      }
-      setCurrentStep(stepIdx)
-      setTimeout(() => {
-        setCompletedSteps(prev => [...prev, stepIdx])
-        stepIdx++
-        setTimeout(runStep, 80)
-      }, DURATIONS[stepIdx])
-    }
+  const [error, setError] =
+    useState('')
 
-    runStep()
-  }
+  const [signedCount, setSignedCount] =
+    useState(0)
 
-  const handleReset = () => {
-    setSignState('idle')
-    setDocInfo(null)
-    setCurrentStep(0)
-    setCompletedSteps([])
-    if (fileRef.current) fileRef.current.value = ''
-  }
+  const pdfInputRef =
+    useRef<HTMLInputElement>(null)
+
+  const privateKeyInputRef =
+    useRef<HTMLInputElement>(null)
+
+  const certificateInputRef =
+    useRef<HTMLInputElement>(null)
+
+
+  const algoLabel =
+    algorithm === 'ECDSA_P256'
+      ? 'ECDSA P-256 / SHA-256'
+      : 'ML-DSA-65'
+
+
+  // =========================================================
+  // FILE HELPERS
+  // =========================================================
 
   const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1048576).toFixed(2)} MB`
+    if (bytes < 1024) {
+      return `${bytes} B`
+    }
+
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`
+    }
+
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
   }
 
-  const truncateHash = (h: string) => h.slice(0, 16) + '...' + h.slice(-8)
+
+  const createSelectedFile = (
+    file: File,
+  ): SelectedFile => ({
+    file,
+    name: file.name,
+    size: file.size,
+  })
+
+
+  // =========================================================
+  // PDF
+  // =========================================================
+
+  const loadPdf = useCallback((file: File) => {
+    setError('')
+
+    if (
+      file.type !== 'application/pdf' &&
+      !file.name.toLowerCase().endsWith('.pdf')
+    ) {
+      setError('El archivo seleccionado no es un PDF.')
+      return
+    }
+
+    setPdfFile(createSelectedFile(file))
+    setSignedPdf(null)
+    setSignState('ready')
+  }, [])
+
+
+  const handlePdfInput = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0]
+
+    if (file) {
+      loadPdf(file)
+    }
+  }
+
+
+  const handleDrop = (
+    e: React.DragEvent<HTMLDivElement>,
+  ) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    const file = e.dataTransfer.files?.[0]
+
+    if (file) {
+      loadPdf(file)
+    }
+  }
+
+
+  // =========================================================
+  // PRIVATE KEY
+  // =========================================================
+
+  const handlePrivateKeyInput = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0]
+
+    if (!file) return
+
+    setError('')
+
+    const validExtension =
+      file.name.toLowerCase().endsWith('.pem') ||
+      file.name.toLowerCase().endsWith('.key')
+
+    if (!validExtension) {
+      setError(
+        'La clave privada debe ser un archivo PEM o KEY.',
+      )
+      return
+    }
+
+    setPrivateKeyFile(createSelectedFile(file))
+  }
+
+
+  // =========================================================
+  // CERTIFICATE
+  // =========================================================
+
+  const handleCertificateInput = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0]
+
+    if (!file) return
+
+    setError('')
+
+    const validExtension =
+      file.name.toLowerCase().endsWith('.pem') ||
+      file.name.toLowerCase().endsWith('.crt') ||
+      file.name.toLowerCase().endsWith('.cer')
+
+    if (!validExtension) {
+      setError(
+        'El certificado debe ser un archivo PEM, CRT o CER.',
+      )
+      return
+    }
+
+    setCertificateFile(createSelectedFile(file))
+  }
+
+
+  // =========================================================
+  // VALIDATION
+  // =========================================================
+
+  const canSign =
+    pdfFile !== null &&
+    privateKeyFile !== null &&
+    certificateFile !== null &&
+    signState !== 'signing'
+
+
+  // =========================================================
+  // SIGN PDF
+  // =========================================================
+
+  const handleSign = async () => {
+    if (!pdfFile) {
+      setError('Selecciona el PDF que deseas firmar.')
+      return
+    }
+
+    if (!privateKeyFile) {
+      setError('Selecciona la clave privada del firmante.')
+      return
+    }
+
+    if (!certificateFile) {
+      setError('Selecciona el certificado del firmante.')
+      return
+    }
+
+    if (!token) {
+      setError(
+        'No existe un token de autenticación válido.',
+      )
+      return
+    }
+
+    setError('')
+    setSignState('signing')
+    setSignedPdf(null)
+
+    try {
+      const formData = new FormData()
+
+      formData.append(
+        'pdf',
+        pdfFile.file,
+        pdfFile.name,
+      )
+
+      formData.append(
+        'private_key',
+        privateKeyFile.file,
+        privateKeyFile.name,
+      )
+
+      formData.append(
+        'certificate',
+        certificateFile.file,
+        certificateFile.name,
+      )
+
+      const response = await fetch(
+        '/client-api/signatures/sign-pdf',
+        {
+          method: 'POST',
+
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+
+          body: formData,
+        },
+      )
+
+
+      if (!response.ok) {
+        let message =
+          'No fue posible firmar el PDF.'
+
+        try {
+          const data = await response.json()
+
+          if (data?.detail) {
+            message = data.detail
+          }
+        } catch {
+          // La respuesta no era JSON.
+        }
+
+        throw new Error(message)
+      }
+
+
+      const blob = await response.blob()
+
+      if (!blob.size) {
+        throw new Error(
+          'El servidor devolvió un PDF vacío.',
+        )
+      }
+
+
+      setSignedPdf(blob)
+
+      const originalName =
+        pdfFile.file.name
+
+      const baseName =
+        originalName
+          .replace(/\.pdf$/i, '')
+          .trim() || 'document'
+
+      setSignedFileName(
+        `${baseName}-signed.pdf`,
+      )
+
+      setSignedCount(count => count + 1)
+      setSignState('signed')
+
+    } catch (err) {
+      console.error(
+        'Error al firmar PDF:',
+        err,
+      )
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'No fue posible firmar el PDF.',
+      )
+
+      setSignState('error')
+    }
+  }
+
+
+  // =========================================================
+  // DOWNLOAD SIGNED PDF
+  // =========================================================
+
+  const handleDownload = () => {
+    if (!signedPdf) return
+
+    const url =
+      URL.createObjectURL(signedPdf)
+
+    const link =
+      document.createElement('a')
+
+    link.href = url
+    link.download = signedFileName
+
+    document.body.appendChild(link)
+    link.click()
+
+    link.remove()
+
+    URL.revokeObjectURL(url)
+  }
+
+
+  // =========================================================
+  // RESET
+  // =========================================================
+
+  const handleReset = () => {
+    setPdfFile(null)
+    setPrivateKeyFile(null)
+    setCertificateFile(null)
+    setSignedPdf(null)
+    setSignedFileName('signed-document.pdf')
+    setError('')
+    setSignState('idle')
+
+    if (pdfInputRef.current) {
+      pdfInputRef.current.value = ''
+    }
+
+    if (privateKeyInputRef.current) {
+      privateKeyInputRef.current.value = ''
+    }
+
+    if (certificateInputRef.current) {
+      certificateInputRef.current.value = ''
+    }
+  }
+
+
+  // =========================================================
+  // FILE CARD
+  // =========================================================
+
+  const FileCard = ({
+    label,
+    file,
+    type,
+    onSelect,
+  }: {
+    label: string
+    file: SelectedFile | null
+    type: 'pdf' | 'key' | 'certificate'
+    onSelect: () => void
+  }) => {
+    return (
+      <div
+        className="rounded-xl p-4"
+        style={{
+          backgroundColor: '#f8fbff',
+          border: '1px solid #dce8fd',
+        }}
+      >
+        <div className="flex items-center gap-3">
+
+          <div
+            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{
+              backgroundColor:
+                type === 'pdf'
+                  ? 'rgba(220,38,38,0.08)'
+                  : type === 'key'
+                    ? 'rgba(36,80,164,0.08)'
+                    : 'rgba(16,185,129,0.08)',
+            }}
+          >
+            {type === 'pdf' ? (
+              <PdfIcon
+                className="w-5 h-5"
+                style={{ color: '#dc2626' }}
+              />
+            ) : type === 'key' ? (
+              <LockIcon
+                className="w-5 h-5"
+                style={{ color: '#2450a4' }}
+              />
+            ) : (
+              <ShieldIcon
+                className="w-5 h-5"
+                style={{ color: '#10b981' }}
+              />
+            )}
+          </div>
+
+
+          <div className="flex-1 min-w-0">
+
+            <p
+              className="mono text-[10px] uppercase tracking-wide mb-1"
+              style={{ color: '#6b98e8' }}
+            >
+              {label}
+            </p>
+
+            {file ? (
+              <>
+                <p
+                  className="text-sm font-medium truncate"
+                  style={{ color: '#0a1628' }}
+                  title={file.name}
+                >
+                  {file.name}
+                </p>
+
+                <p
+                  className="mono text-[10px] mt-0.5"
+                  style={{ color: '#6b98e8' }}
+                >
+                  {formatSize(file.size)}
+                </p>
+              </>
+            ) : (
+              <p
+                className="text-xs"
+                style={{ color: '#a8c4f4' }}
+              >
+                Archivo no seleccionado
+              </p>
+            )}
+          </div>
+
+
+          <button
+            type="button"
+            onClick={onSelect}
+            className="mono text-[10px] px-3 py-2 rounded-lg flex-shrink-0"
+            style={{
+              color: '#2450a4',
+              backgroundColor: 'white',
+              border: '1px solid #c7d8f5',
+            }}
+          >
+            {file ? 'Cambiar' : 'Seleccionar'}
+          </button>
+
+        </div>
+      </div>
+    )
+  }
+
+
+  // =========================================================
+  // RENDER
+  // =========================================================
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#f0f5fe' }}>
-      {/* Header */}
-      <div className="w-full" style={{ backgroundColor: '#0a1628', borderBottom: '1px solid rgba(100,160,255,0.1)' }}>
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onBack}
-              className="flex items-center gap-2 mono text-xs transition-colors"
-              style={{ color: '#6b98e8' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#a8c4f4')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#6b98e8')}
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundColor: '#f0f5fe',
+      }}
+    >
+
+      {/* =====================================================
+          HEADER
+          ===================================================== */}
+
+      <div
+        className="w-full"
+        style={{
+          backgroundColor: '#0a1628',
+          borderBottom:
+            '1px solid rgba(100,160,255,0.1)',
+        }}
+      >
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 mono text-xs transition-colors"
+            style={{
+              color: '#6b98e8',
+            }}
+            onMouseEnter={e =>
+              (e.currentTarget.style.color =
+                '#a8c4f4')
+            }
+            onMouseLeave={e =>
+              (e.currentTarget.style.color =
+                '#6b98e8')
+            }
+          >
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-              </svg>
-              Mis llaves
-            </button>
-            <div className="w-px h-4" style={{ backgroundColor: 'rgba(100,160,255,0.2)' }} />
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: '#10b981' }}>
-                <ShieldIcon className="w-4 h-4 text-white" />
-              </div>
-              <span className="mono text-sm font-semibold tracking-wider text-white">CertSecure PKI</span>
-            </div>
-          </div>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+              />
+            </svg>
+
+            Volver
+          </button>
+
+
           <div className="flex items-center gap-3">
+
             {signedCount > 0 && (
               <div
                 className="mono text-xs px-3 py-1.5 rounded-full"
-                style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#34d399', border: '1px solid rgba(16,185,129,0.25)' }}
+                style={{
+                  backgroundColor:
+                    'rgba(16,185,129,0.15)',
+                  color: '#34d399',
+                  border:
+                    '1px solid rgba(16,185,129,0.25)',
+                }}
               >
-                {signedCount} doc{signedCount > 1 ? 's' : ''} firmado{signedCount > 1 ? 's' : ''}
+                {signedCount} PDF
+                {signedCount > 1 ? 's' : ''}{' '}
+                firmado
+                {signedCount > 1 ? 's' : ''}
               </div>
             )}
-            <div className="mono text-xs" style={{ color: '#3b6fd4' }}>{algoLabel}</div>
+
+            <div
+              className="mono text-xs"
+              style={{
+                color: '#3b6fd4',
+              }}
+            >
+              {algoLabel}
+            </div>
+
           </div>
+
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
-        {/* Page header */}
+
+      {/* =====================================================
+          CONTENT
+          ===================================================== */}
+
+      <div className="max-w-5xl mx-auto px-6 py-10">
+
         <div className="mb-8">
-          <p className="mono text-xs font-semibold tracking-widest uppercase mb-1" style={{ color: '#10b981' }}>
+
+          <p
+            className="mono text-xs font-semibold tracking-widest uppercase mb-1"
+            style={{
+              color: '#10b981',
+            }}
+          >
             Firma Digital de Documentos
           </p>
-          <h1 className="text-2xl font-semibold mb-1" style={{ color: '#0a1628' }}>
+
+          <h1
+            className="text-2xl font-semibold mb-1"
+            style={{
+              color: '#0a1628',
+            }}
+          >
             Firmar documento PDF
           </h1>
-          <p className="text-sm" style={{ color: '#3b6fd4' }}>
-            El hash SHA-256 del documento se concatena con el hash de tus primitivas criptográficas y se firma con tu llave privada.
+
+          <p
+            className="text-sm"
+            style={{
+              color: '#3b6fd4',
+            }}
+          >
+            Selecciona el PDF, la clave privada y el
+            certificado que utilizará el servicio de firma.
           </p>
+
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left: upload + doc info */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Upload zone */}
-            {signState === 'idle' && (
-              <div
-                className="rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200"
+
+        {/* ===================================================
+            ERROR
+            =================================================== */}
+
+        {error && (
+          <div
+            className="mb-6 rounded-xl px-4 py-3 flex items-start gap-3"
+            style={{
+              backgroundColor: 'rgba(220,38,38,0.06)',
+              border:
+                '1px solid rgba(220,38,38,0.20)',
+            }}
+          >
+            <div
+              className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{
+                backgroundColor: '#dc2626',
+                color: 'white',
+              }}
+            >
+              !
+            </div>
+
+            <div>
+              <p
+                className="text-sm font-medium"
                 style={{
-                  border: `2px dashed ${isDragging ? '#2450a4' : '#a8c4f4'}`,
-                  backgroundColor: isDragging ? 'rgba(36,80,164,0.06)' : 'white',
-                  padding: '48px 24px',
+                  color: '#991b1b',
                 }}
-                onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => fileRef.current?.click()}
               >
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-                  style={{ backgroundColor: isDragging ? 'rgba(36,80,164,0.12)' : '#f0f5fe' }}
-                >
-                  <PdfIcon className="w-7 h-7" style={{ color: isDragging ? '#2450a4' : '#6b98e8' }} />
-                </div>
-                <p className="font-semibold text-sm mb-1" style={{ color: '#0a1628' }}>
-                  Arrastra tu PDF aquí
-                </p>
-                <p className="text-xs mb-4" style={{ color: '#6b98e8' }}>
-                  o haz clic para seleccionar
-                </p>
-                <div
-                  className="mono text-xs px-3 py-1.5 rounded-lg"
-                  style={{ backgroundColor: '#f0f5fe', color: '#a8c4f4', border: '1px solid #dce8fd' }}
-                >
-                  Solo archivos .pdf
-                </div>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={handleFileInput}
-                />
-              </div>
-            )}
+                No fue posible completar la operación
+              </p>
 
-            {/* Document loaded card */}
-            {(signState === 'loaded' || signState === 'signing' || signState === 'signed') && docInfo && (
-              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'white', border: '1.5px solid #dce8fd' }}>
-                <div className="p-5" style={{ borderBottom: '1px solid #f0f5fe' }}>
-                  <div className="flex items-start gap-3">
+              <p
+                className="text-xs mt-1"
+                style={{
+                  color: '#b91c1c',
+                }}
+              >
+                {error}
+              </p>
+            </div>
+          </div>
+        )}
+
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+          {/* =================================================
+              LEFT
+              ================================================= */}
+
+          <div className="lg:col-span-3 space-y-4">
+
+            {/* PDF UPLOAD */}
+
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{
+                backgroundColor: 'white',
+                border:
+                  '1px solid #dce8fd',
+              }}
+            >
+
+              <div
+                className="px-5 py-4"
+                style={{
+                  borderBottom:
+                    '1px solid #f0f5fe',
+                }}
+              >
+                <p
+                  className="mono text-xs font-semibold tracking-wide uppercase"
+                  style={{
+                    color: '#162c5e',
+                  }}
+                >
+                  01 · Documento
+                </p>
+              </div>
+
+
+              {pdfFile ? (
+                <div className="p-5">
+
+                  <FileCard
+                    label="PDF a firmar"
+                    file={pdfFile}
+                    type="pdf"
+                    onSelect={() =>
+                      pdfInputRef.current?.click()
+                    }
+                  />
+
+                  <input
+                    ref={pdfInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                    onChange={handlePdfInput}
+                  />
+
+                </div>
+              ) : (
+                <div className="p-5">
+
+                  <div
+                    className="rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200"
+                    style={{
+                      border:
+                        `2px dashed ${
+                          isDragging
+                            ? '#2450a4'
+                            : '#a8c4f4'
+                        }`,
+                      backgroundColor:
+                        isDragging
+                          ? 'rgba(36,80,164,0.06)'
+                          : 'white',
+                      padding: '42px 24px',
+                    }}
+                    onDragOver={e => {
+                      e.preventDefault()
+                      setIsDragging(true)
+                    }}
+                    onDragLeave={() =>
+                      setIsDragging(false)
+                    }
+                    onDrop={handleDrop}
+                    onClick={() =>
+                      pdfInputRef.current?.click()
+                    }
+                  >
+
                     <div
-                      className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.15)' }}
+                      className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                      style={{
+                        backgroundColor:
+                          '#f0f5fe',
+                      }}
                     >
-                      <PdfIcon className="w-6 h-6" style={{ color: '#dc2626' }} />
+                      <PdfIcon
+                        className="w-7 h-7"
+                        style={{
+                          color:
+                            isDragging
+                              ? '#2450a4'
+                              : '#6b98e8',
+                        }}
+                      />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm truncate" style={{ color: '#0a1628' }}>{docInfo.name}</p>
-                      <div className="flex gap-3 mt-1">
-                        <span className="mono text-xs" style={{ color: '#6b98e8' }}>{formatSize(docInfo.size)}</span>
-                        <span className="mono text-xs" style={{ color: '#6b98e8' }}>{docInfo.pages} página{docInfo.pages > 1 ? 's' : ''}</span>
-                      </div>
-                    </div>
-                    {signState === 'loaded' && (
-                      <button
-                        onClick={handleReset}
-                        className="text-xs mono underline flex-shrink-0"
-                        style={{ color: '#a8c4f4' }}
-                      >
-                        Cambiar
-                      </button>
-                    )}
-                    {signState === 'signed' && (
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#10b981' }}>
-                        <CheckIcon className="w-3.5 h-3.5 text-white" />
-                      </div>
-                    )}
+
+                    <p
+                      className="font-semibold text-sm mb-1"
+                      style={{
+                        color: '#0a1628',
+                      }}
+                    >
+                      Arrastra tu PDF aquí
+                    </p>
+
+                    <p
+                      className="text-xs mb-4"
+                      style={{
+                        color: '#6b98e8',
+                      }}
+                    >
+                      o haz clic para seleccionar
+                    </p>
+
+                    <span
+                      className="mono text-xs px-3 py-1.5 rounded-lg"
+                      style={{
+                        backgroundColor:
+                          '#f0f5fe',
+                        color: '#6b98e8',
+                        border:
+                          '1px solid #dce8fd',
+                      }}
+                    >
+                      Solo archivos .pdf
+                    </span>
+
+                    <input
+                      ref={pdfInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={handlePdfInput}
+                    />
+
                   </div>
-                </div>
 
-                {/* Hash fields */}
-                <div className="p-5 space-y-3">
-                  <HashRow label="Hash documento" value={docInfo.docHash} truncate={truncateHash} ready={signState === 'signed'} />
-                  <HashRow label="Hash llave pública" value={docInfo.pubKeyHash} truncate={truncateHash} ready={signState === 'signed'} />
-                  <HashRow label="Hash primitivas" value={docInfo.primitiveHash} truncate={truncateHash} ready={signState === 'signed'} />
-                  <HashRow label="Hash concatenado" value={docInfo.concatHash} truncate={truncateHash} ready={signState === 'signed'} highlight />
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Sign / sign another button */}
-            {signState === 'loaded' && (
+            </div>
+
+
+            {/* PRIVATE KEY */}
+
+            <div
+              className="rounded-2xl p-5"
+              style={{
+                backgroundColor: 'white',
+                border:
+                  '1px solid #dce8fd',
+              }}
+            >
+
+              <p
+                className="mono text-xs font-semibold tracking-wide uppercase mb-4"
+                style={{
+                  color: '#162c5e',
+                }}
+              >
+                02 · Clave privada
+              </p>
+
+              <FileCard
+                label="Clave privada del firmante"
+                file={privateKeyFile}
+                type="key"
+                onSelect={() =>
+                  privateKeyInputRef.current?.click()
+                }
+              />
+
+              <input
+                ref={privateKeyInputRef}
+                type="file"
+                accept=".pem,.key"
+                className="hidden"
+                onChange={handlePrivateKeyInput}
+              />
+
+            </div>
+
+
+            {/* CERTIFICATE */}
+
+            <div
+              className="rounded-2xl p-5"
+              style={{
+                backgroundColor: 'white',
+                border:
+                  '1px solid #dce8fd',
+              }}
+            >
+
+              <p
+                className="mono text-xs font-semibold tracking-wide uppercase mb-4"
+                style={{
+                  color: '#162c5e',
+                }}
+              >
+                03 · Certificado
+              </p>
+
+              <FileCard
+                label="Certificado X.509 del firmante"
+                file={certificateFile}
+                type="certificate"
+                onSelect={() =>
+                  certificateInputRef.current?.click()
+                }
+              />
+
+              <input
+                ref={certificateInputRef}
+                type="file"
+                accept=".pem,.crt,.cer"
+                className="hidden"
+                onChange={handleCertificateInput}
+              />
+
+            </div>
+
+
+            {/* SIGN BUTTON */}
+
+            {signState !== 'signed' && (
               <button
+                type="button"
+                disabled={!canSign}
                 onClick={handleSign}
                 className="w-full py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200"
-                style={{ backgroundColor: '#0a1628', color: 'white' }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#162c5e')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#0a1628')}
+                style={{
+                  backgroundColor:
+                    canSign
+                      ? '#0a1628'
+                      : '#c7d8f5',
+                  color: 'white',
+                  cursor:
+                    canSign
+                      ? 'pointer'
+                      : 'not-allowed',
+                }}
               >
-                <LockIcon className="w-4 h-4" />
-                Firmar documento con {algoLabel}
+
+                {signState === 'signing' ? (
+                  <>
+                    <div
+                      className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin"
+                    />
+
+                    Firmando documento...
+                  </>
+                ) : (
+                  <>
+                    <LockIcon className="w-4 h-4" />
+
+                    Firmar PDF
+                  </>
+                )}
+
               </button>
             )}
 
+
+            {/* DOWNLOAD */}
+
             {signState === 'signed' && (
-              <div className="space-y-2">
+              <div className="space-y-3">
+
                 <button
-                  className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200"
-                  style={{ backgroundColor: '#2450a4', color: 'white' }}
-                  onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
-                  onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                  type="button"
+                  onClick={handleDownload}
+                  className="w-full py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200"
+                  style={{
+                    backgroundColor: '#2450a4',
+                    color: 'white',
+                  }}
                 >
                   <DownloadIcon className="w-4 h-4" />
+
                   Descargar PDF firmado
                 </button>
+
+
                 <button
+                  type="button"
                   onClick={handleReset}
-                  className="w-full py-3 rounded-xl text-sm font-medium transition-all duration-200"
-                  style={{ backgroundColor: 'white', color: '#3b6fd4', border: '1.5px solid #dce8fd' }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#a8c4f4')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = '#dce8fd')}
+                  className="w-full py-3 rounded-xl text-sm font-medium"
+                  style={{
+                    backgroundColor: 'white',
+                    color: '#3b6fd4',
+                    border:
+                      '1.5px solid #dce8fd',
+                  }}
                 >
                   Firmar otro documento
                 </button>
+
               </div>
             )}
 
-            {/* Signer info card */}
-            <div className="rounded-xl p-4" style={{ backgroundColor: 'white', border: '1px solid #dce8fd' }}>
-              <p className="mono text-xs font-semibold tracking-wide uppercase mb-3" style={{ color: '#162c5e' }}>
+          </div>
+
+
+          {/* =================================================
+              RIGHT
+              ================================================= */}
+
+          <div className="lg:col-span-2 space-y-4">
+
+            {/* USER */}
+
+            <div
+              className="rounded-2xl p-5"
+              style={{
+                backgroundColor: 'white',
+                border:
+                  '1px solid #dce8fd',
+              }}
+            >
+
+              <p
+                className="mono text-xs font-semibold tracking-wide uppercase mb-4"
+                style={{
+                  color: '#162c5e',
+                }}
+              >
                 Identidad del firmante
               </p>
-              <div className="space-y-2">
-                {[
-                  ['Nombre', userName || userEmail],
-                  ['Email', userEmail],
-                  ['Algoritmo', algoLabel],
-                  ['Certificado', certSerial],
-                ].map(([k, v]) => (
-                  <div key={k} className="flex items-start justify-between gap-2">
-                    <span className="text-xs flex-shrink-0" style={{ color: '#6b98e8' }}>{k}</span>
-                    <span className="mono text-xs text-right truncate" style={{ color: '#0a1628', maxWidth: '160px' }}>{v}</span>
-                  </div>
-                ))}
+
+              <div className="space-y-3">
+
+                <InfoRow
+                  label="Nombre"
+                  value={userName || userEmail}
+                />
+
+                <InfoRow
+                  label="Email"
+                  value={userEmail}
+                />
+
+                <InfoRow
+                  label="Algoritmo"
+                  value={algoLabel}
+                />
+
+                {certSerial && (
+                  <InfoRow
+                    label="Certificado"
+                    value={certSerial}
+                  />
+                )}
+
               </div>
+
             </div>
-          </div>
 
-          {/* Right: signing process + result */}
-          <div className="lg:col-span-3 space-y-4">
-            {/* Idle state: explanation card */}
-            {signState === 'idle' && (
-              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#0a1628' }}>
-                <div className="p-6">
-                  <p className="mono text-xs tracking-widest uppercase mb-4" style={{ color: '#10b981' }}>
-                    Cómo funciona la firma
-                  </p>
-                  <div className="space-y-5">
-                    {[
-                      {
-                        n: '01',
-                        title: 'Hash del documento',
-                        desc: 'SHA-256 del contenido binario del PDF genera una huella digital única e irreversible del documento.',
-                        color: '#6b98e8',
-                      },
-                      {
-                        n: '02',
-                        title: 'Hash de primitivas criptográficas',
-                        desc: `SHA-256(llave_pública ∥ serial_cert ∥ ${algoLabel}) vincula tu identidad criptográfica a la firma.`,
-                        color: '#10b981',
-                      },
-                      {
-                        n: '03',
-                        title: 'Concatenación y firma',
-                        desc: 'Se firma el hash concatenado (doc_hash ∥ primitives_hash) con tu llave privada local. El servidor nunca ve la llave privada.',
-                        color: '#fbbf24',
-                      },
-                      {
-                        n: '04',
-                        title: 'Bloque anexado al PDF',
-                        desc: 'La firma se integra al PDF como un bloque criptográfico al final del archivo, compatible con verificadores estándar.',
-                        color: '#a78bfa',
-                      },
-                    ].map(step => (
-                      <div key={step.n} className="flex gap-4">
-                        <div
-                          className="mono text-xs font-semibold w-6 flex-shrink-0 mt-0.5"
-                          style={{ color: step.color }}
-                        >
-                          {step.n}
-                        </div>
-                        <div>
-                          <p className="text-white text-sm font-medium mb-1">{step.title}</p>
-                          <p className="text-xs leading-relaxed" style={{ color: '#6b98e8' }}>{step.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="px-6 py-4 mono text-xs" style={{ backgroundColor: '#050d1a', color: '#3b6fd4', borderTop: '1px solid rgba(100,160,255,0.1)' }}>
-                  Firma ejecutada localmente · Clave privada nunca abandona tu navegador
-                </div>
+
+            {/* REQUIREMENTS */}
+
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{
+                backgroundColor: '#0a1628',
+              }}
+            >
+
+              <div className="p-6">
+
+                <p
+                  className="mono text-xs tracking-widest uppercase mb-5"
+                  style={{
+                    color: '#10b981',
+                  }}
+                >
+                  Componentes requeridos
+                </p>
+
+                <Requirement
+                  number="01"
+                  title="Documento PDF"
+                  description="Documento que será procesado y firmado."
+                  active={pdfFile !== null}
+                />
+
+                <Requirement
+                  number="02"
+                  title="Clave privada"
+                  description="Clave privada correspondiente al certificado."
+                  active={privateKeyFile !== null}
+                />
+
+                <Requirement
+                  number="03"
+                  title="Certificado X.509"
+                  description="Certificado que identifica al firmante."
+                  active={certificateFile !== null}
+                />
+
               </div>
-            )}
 
-            {/* Signing animation */}
-            {(signState === 'signing') && (
-              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#0a1628', border: '1px solid rgba(100,160,255,0.12)' }}>
-                <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(100,160,255,0.1)' }}>
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center pulse-glow" style={{ backgroundColor: 'rgba(16,185,129,0.15)' }}>
-                    <LockIcon className="w-4 h-4" style={{ color: '#10b981' }} />
-                  </div>
-                  <div>
-                    <p className="text-white font-medium text-sm">Proceso de firma en ejecución</p>
-                    <p className="mono text-xs" style={{ color: '#3b6fd4' }}>Entorno: navegador local · {algoLabel}</p>
-                  </div>
-                </div>
-                <div className="p-6 space-y-3">
-                  {SIGN_STEPS.map((step, i) => {
-                    const isDone = completedSteps.includes(i)
-                    const isActive = i === currentStep && !isDone
-                    return (
-                      <div
-                        key={i}
-                        className="flex items-start gap-3 transition-all duration-200"
-                        style={{ opacity: i > currentStep ? 0.25 : 1 }}
-                      >
-                        <div className="flex-shrink-0 mt-0.5">
-                          {isDone ? (
-                            <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: '#10b981' }}>
-                              <CheckIcon className="w-3 h-3 text-white" />
-                            </div>
-                          ) : isActive ? (
-                            <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center" style={{ borderColor: '#2450a4' }}>
-                              <div className="w-2 h-2 rounded-full pulse-glow" style={{ backgroundColor: '#3b6fd4' }} />
-                            </div>
-                          ) : (
-                            <div className="w-5 h-5 rounded-full border-2" style={{ borderColor: 'rgba(100,160,255,0.2)' }} />
-                          )}
-                        </div>
-                        <p className="mono text-xs leading-relaxed" style={{ color: isDone ? '#6ee7b7' : isActive ? '#a8c4f4' : '#3b6fd4' }}>
-                          {isActive && <span className="inline-block w-1.5 h-3 mr-1.5 align-middle pulse-glow" style={{ backgroundColor: '#3b6fd4' }} />}
-                          {step.text}
-                        </p>
-                        {isDone && <span className="mono text-xs flex-shrink-0" style={{ color: '#059669' }}>OK</span>}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+            </div>
 
-            {/* Loaded state placeholder */}
-            {signState === 'loaded' && (
+
+            {/* STATUS */}
+
+            {signState === 'signed' && (
               <div
-                className="rounded-2xl p-8 flex flex-col items-center justify-center text-center"
-                style={{ backgroundColor: 'white', border: '1.5px dashed #dce8fd', minHeight: '260px' }}
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  border:
+                    '1px solid rgba(16,185,129,0.3)',
+                  backgroundColor:
+                    'rgba(16,185,129,0.05)',
+                }}
               >
-                <LockIcon className="w-10 h-10 mb-4" style={{ color: '#dce8fd' }} />
-                <p className="font-medium text-sm mb-1" style={{ color: '#a8c4f4' }}>
-                  Listo para firmar
-                </p>
-                <p className="text-xs" style={{ color: '#dce8fd' }}>
-                  Pulsa el botón para iniciar el proceso criptográfico
-                </p>
-              </div>
-            )}
 
-            {/* Signed result: signature block */}
-            {signState === 'signed' && docInfo && (
-              <div className="rounded-2xl overflow-hidden fade-in-up" style={{ border: '1.5px solid rgba(16,185,129,0.3)' }}>
-                {/* Header */}
-                <div className="px-6 py-4 flex items-center justify-between" style={{ backgroundColor: '#065f46' }}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(52,211,153,0.2)' }}>
-                      <CheckIcon className="w-4 h-4" style={{ color: '#34d399' }} />
+                <div className="p-5">
+
+                  <div className="flex items-center gap-3 mb-4">
+
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center"
+                      style={{
+                        backgroundColor:
+                          '#10b981',
+                      }}
+                    >
+                      <CheckIcon className="w-5 h-5 text-white" />
                     </div>
+
                     <div>
-                      <p className="text-white font-medium text-sm">Documento firmado correctamente</p>
-                      <p className="mono text-xs" style={{ color: '#6ee7b7' }}>{docInfo.signedAt}</p>
+
+                      <p
+                        className="font-semibold text-sm"
+                        style={{
+                          color: '#065f46',
+                        }}
+                      >
+                        PDF firmado correctamente
+                      </p>
+
+                      <p
+                        className="text-xs mt-0.5"
+                        style={{
+                          color: '#059669',
+                        }}
+                      >
+                        pyHanko completó la firma digital.
+                      </p>
+
                     </div>
+
                   </div>
-                  <div className="mono text-xs px-3 py-1.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(52,211,153,0.2)', color: '#34d399', border: '1px solid rgba(52,211,153,0.3)' }}>
-                    VÁLIDO
+
+
+                  <div
+                    className="rounded-lg p-3"
+                    style={{
+                      backgroundColor:
+                        'rgba(16,185,129,0.06)',
+                      border:
+                        '1px solid rgba(16,185,129,0.15)',
+                    }}
+                  >
+
+                    <p
+                      className="mono text-xs break-all"
+                      style={{
+                        color: '#047857',
+                      }}
+                    >
+                      {signedFileName}
+                    </p>
+
                   </div>
+
                 </div>
 
-                {/* Signature block — terminal style */}
-                <div className="p-6" style={{ backgroundColor: '#050d1a' }}>
-                  <p className="mono text-xs mb-4" style={{ color: '#3b6fd4' }}>
-                    <span style={{ color: '#10b981' }}>$</span> cat signature_block.txt
-                  </p>
-                  <div className="space-y-4">
-                    <SigSection title="BLOQUE DE FIRMA CRIPTOGRÁFICA" color="#10b981">
-                      <SigRow k="Versión" v="CertSecure-PKI v1.0" />
-                      <SigRow k="Algoritmo" v={algoLabel} highlight />
-                      <SigRow k="Firmante" v={userName || userEmail} />
-                      <SigRow k="Serial cert" v={certSerial} />
-                      <SigRow k="Timestamp" v={docInfo.signedAt} />
-                    </SigSection>
-
-                    <SigSection title="HASH DEL DOCUMENTO" color="#6b98e8">
-                      <SigRow k="Algoritmo" v="SHA-256" />
-                      <SigRow k="Digest" v={docInfo.docHash} mono long />
-                    </SigSection>
-
-                    <SigSection title="HASH DE PRIMITIVAS CRIPTOGRÁFICAS" color="#a78bfa">
-                      <SigRow k="Llave pública" v={docInfo.pubKeyHash} mono long />
-                      <SigRow k="Hash primitivas" v="SHA-256(pub_key ∥ serial_cert ∥ algo)" />
-                      <SigRow k="Digest" v={docInfo.primitiveHash} mono long />
-                    </SigSection>
-
-                    <SigSection title="CONCATENACIÓN Y FIRMA" color="#fbbf24">
-                      <SigRow k="Entrada" v="SHA-256(doc_hash ∥ primitives_hash)" />
-                      <SigRow k="Hash concat" v={docInfo.concatHash} mono long highlight />
-                      <SigRow k="Firma (Base64)" v={docInfo.signature} mono long />
-                    </SigSection>
-                  </div>
-
-                  <div className="mt-5 pt-4 mono text-xs" style={{ borderTop: '1px solid rgba(100,160,255,0.1)', color: '#1e3a78' }}>
-                    ─── EOF signature block · {docInfo.name} ───
-                  </div>
-                </div>
-
-                {/* Verification note */}
-                <div className="px-6 py-4 flex items-center gap-3" style={{ backgroundColor: 'rgba(16,185,129,0.06)', borderTop: '1px solid rgba(16,185,129,0.15)' }}>
-                  <ShieldIcon className="w-4 h-4 flex-shrink-0" style={{ color: '#10b981' }} />
-                  <p className="mono text-xs leading-relaxed" style={{ color: '#059669' }}>
-                    Cualquier modificación al documento invalidará la firma. Verifica con{' '}
-                    <span style={{ color: '#34d399' }}>certsecure verify --cert certificate.crt --doc documento.pdf</span>
-                  </p>
-                </div>
               </div>
             )}
+
+
+            {/* SECURITY NOTE */}
+
+            <div
+              className="rounded-xl p-4 flex items-start gap-3"
+              style={{
+                backgroundColor: 'white',
+                border:
+                  '1px solid #dce8fd',
+              }}
+            >
+
+              <ShieldIcon
+                className="w-5 h-5 flex-shrink-0"
+                style={{
+                  color: '#10b981',
+                }}
+              />
+
+              <p
+                className="text-xs leading-relaxed"
+                style={{
+                  color: '#6b98e8',
+                }}
+              >
+                La operación requiere autenticación mediante
+                JWT. El servicio verifica que la clave privada
+                corresponda al certificado antes de generar
+                la firma PDF.
+              </p>
+
+            </div>
+
           </div>
+
         </div>
+
       </div>
+
     </div>
   )
 }
 
-// ── Sub-components ──────────────────────────────────────────────────────────
 
-function HashRow({
-  label, value, truncate, ready, highlight,
+// ===========================================================
+// INFO ROW
+// ===========================================================
+
+function InfoRow({
+  label,
+  value,
 }: {
   label: string
   value: string
-  truncate: (v: string) => string
-  ready: boolean
-  highlight?: boolean
 }) {
   return (
-    <div className="flex items-start justify-between gap-2">
-      <span className="text-xs flex-shrink-0" style={{ color: '#6b98e8' }}>{label}</span>
+    <div className="flex items-start justify-between gap-3">
+
+      <span
+        className="text-xs flex-shrink-0"
+        style={{
+          color: '#6b98e8',
+        }}
+      >
+        {label}
+      </span>
+
       <span
         className="mono text-xs text-right break-all"
-        style={{ color: ready ? (highlight ? '#10b981' : '#0a1628') : '#dce8fd', maxWidth: '180px' }}
+        style={{
+          color: '#0a1628',
+          maxWidth: '180px',
+        }}
       >
-        {ready ? truncate(value) : '—'}
+        {value}
       </span>
+
     </div>
   )
 }
 
-function SigSection({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="mono text-xs font-semibold mb-2" style={{ color }}>
-        ── {title} ──
-      </p>
-      <div className="pl-3 space-y-1.5" style={{ borderLeft: `2px solid ${color}30` }}>
-        {children}
-      </div>
-    </div>
-  )
-}
 
-function SigRow({
-  k, v, mono, long, highlight,
+// ===========================================================
+// REQUIREMENT
+// ===========================================================
+
+function Requirement({
+  number,
+  title,
+  description,
+  active,
 }: {
-  k: string; v: string; mono?: boolean; long?: boolean; highlight?: boolean
+  number: string
+  title: string
+  description: string
+  active: boolean
 }) {
   return (
-    <div className={`flex gap-2 ${long ? 'flex-col' : 'items-start'}`}>
-      <span className="text-xs flex-shrink-0" style={{ color: '#3b6fd4', minWidth: long ? 'auto' : '90px' }}>
-        {k}:
-      </span>
-      <span
-        className={`${mono ? 'mono' : ''} text-xs break-all leading-relaxed`}
-        style={{ color: highlight ? '#34d399' : '#a8c4f4' }}
+    <div className="flex gap-3 mb-5 last:mb-0">
+
+      <div
+        className="mono text-xs font-semibold flex-shrink-0 mt-0.5"
+        style={{
+          color: active
+            ? '#10b981'
+            : '#3b6fd4',
+        }}
       >
-        {v}
-      </span>
+        {number}
+      </div>
+
+      <div>
+
+        <p
+          className="text-sm font-medium mb-1"
+          style={{
+            color: active
+              ? 'white'
+              : '#a8c4f4',
+          }}
+        >
+          {title}
+
+          {active && (
+            <span
+              className="ml-2"
+              style={{
+                color: '#34d399',
+              }}
+            >
+              ✓
+            </span>
+          )}
+        </p>
+
+        <p
+          className="text-xs leading-relaxed"
+          style={{
+            color: '#6b98e8',
+          }}
+        >
+          {description}
+        </p>
+
+      </div>
+
     </div>
   )
 }
 
-function PdfIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
+
+// ===========================================================
+// PDF ICON
+// ===========================================================
+
+function PdfIcon({
+  className,
+  style,
+}: {
+  className?: string
+  style?: React.CSSProperties
+}) {
   return (
-    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    <svg
+      className={className}
+      style={style}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+      />
     </svg>
   )
 }
