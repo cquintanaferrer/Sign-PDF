@@ -1,4 +1,4 @@
-const API_BASE_URL = "/client-api";
+const API_BASE_URL = '/client-api'
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -11,6 +11,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> | undefined),
   }
+
   if (token) headers.Authorization = `Bearer ${token}`
 
   const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers })
@@ -24,19 +25,16 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
 
 export interface LoginResponse {
   access_token: string
+  token_type?: string
 }
 
-export interface RegisterResponse {
+export interface UserProfile {
+  id: number
   name: string
   email: string
 }
 
-export interface Certificate {
-  id: number
-  request_id: string
-  status: string
-  signed_certificate: string | null
-}
+export interface RegisterResponse extends UserProfile {}
 
 export function login(email: string, password: string) {
   return request<LoginResponse>('/auth/login', {
@@ -52,18 +50,6 @@ export function register(name: string, email: string, password: string) {
   })
 }
 
-export function getCertificates(token: string) {
-  return request<Certificate[]>('/certificates/me', {}, token)
-}
-
-export function getCertificateStatus(certId: number, token: string) {
-  return request<Certificate>(`/certificates/${certId}/status`, {}, token)
-}
-
-export function signCertificate(csr: string, token: string) {
-  return request<Certificate>(
-    '/certificates/sign',
-    { method: 'POST', body: JSON.stringify({ csr }) },
-    token
-  )
+export function getProfile(token: string) {
+  return request<UserProfile>('/auth/me', {}, token)
 }

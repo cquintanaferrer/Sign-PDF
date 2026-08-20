@@ -25,3 +25,8 @@ app/tests/generate_test_ecdsa_regression_csr.py
 app/tests/ecdsa_regression_sign_verify.py
 app/tests/generate_test_ecdsa_csr.py
 app/tests/ecdsa_sign_verify_test.py
+
+# Salidas de las pruebas heredadas de CA
+app/tests/test_request.csr
+app/tests/received_certificate.pem
+app/tests/test_user_private_key.pem

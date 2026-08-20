@@ -1,458 +1,136 @@
 import { useState } from 'react'
-
 import { LoginScreen } from './components/LoginScreen'
 import { RegisterScreen } from './components/RegisterScreen'
 import { OtpScreen } from './components/OtpScreen'
-import { AlgorithmScreen } from './components/AlgorithmScreen'
-
-import {
-  ProcessingScreen,
-  type GeneratedKeys,
-} from './components/ProcessingScreen'
-
-import { SuccessScreen } from './components/SuccessScreen'
 import { SignDocumentScreen } from './components/SignDocumentScreen'
-import { KeysReadyScreen } from './components/KeysReadyScreen'
 import { AppNavbar } from './components/AppNavbar'
 import { KeysPage } from './components/KeysPage'
 import { CertificatePage } from './components/CertificatePage'
 import { ValidateCertificatePage } from './components/ValidateCertificatePage'
+import { ValidateStandaloneCertificatePage } from './components/ValidateStandaloneCertificatePage'
 import { ValidateWebsitePage } from './components/ValidateWebsitePage'
+import { getProfile } from './services/api'
+import type { Screen } from './types'
 
-import type {
-  Screen,
-  Algorithm,
-} from './types'
-
+type AuthenticatedScreen = 'signDocument' | 'keys' | 'certificate' | 'validateCertificate' | 'validateStandaloneCertificate' | 'validateWebsite'
 
 export default function App() {
-
-  const [screen, setScreen] =
-    useState<Screen>('login')
-
-  const [userName, setUserName] =
-    useState('')
-
-  const [userEmail, setUserEmail] =
-    useState('')
-
-  const [algorithm, setAlgorithm] =
-    useState<Algorithm>('ECDSA_P256')
-
-  const [token, setToken] =
-    useState('')
-
-  const [keys, setKeys] =
-    useState<GeneratedKeys | null>(null)
-
-
-  // =========================================================
-  // LOGOUT
-  // =========================================================
+  const [screen, setScreen] = useState<Screen>('login')
+  const [userName, setUserName] = useState('')
+  const [userEmail, setUserEmail] = useState('')
+  const [token, setToken] = useState('')
 
   const reset = () => {
-
     setUserName('')
     setUserEmail('')
-    setAlgorithm('ECDSA_P256')
     setToken('')
-    setKeys(null)
-
     setScreen('login')
   }
 
+  const navigateAuthenticated = (nextScreen: AuthenticatedScreen) => setScreen(nextScreen)
 
-  // =========================================================
-  // NAVEGACIÓN AUTENTICADA
-  // =========================================================
+  const navbar = (currentScreen: string) => (
+    <AppNavbar
+      userName={userName || userEmail}
+      currentScreen={currentScreen}
+      onNavigate={navigateAuthenticated}
+      onLogout={reset}
+    />
+  )
 
-  const navigateAuthenticated = (
-    nextScreen:
-      | 'signDocument'
-      | 'keys'
-      | 'certificate'
-      | 'validateCertificate'
-      | 'validateWebsite',
-  ) => {
-
-    setScreen(nextScreen)
+  if (screen === 'login') {
+    return (
+      <LoginScreen
+        onLogin={async (email, accessToken) => {
+          setUserEmail(email)
+          setToken(accessToken)
+          try {
+            const profile = await getProfile(accessToken)
+            setUserName(profile.name)
+            setUserEmail(profile.email)
+          } catch {
+            setUserName(email)
+          }
+          setScreen('otp')
+        }}
+        onGoRegister={() => setScreen('register')}
+      />
+    )
   }
 
+  if (screen === 'register') {
+    return (
+      <RegisterScreen
+        onRegister={(name, email, accessToken) => {
+          setUserName(name)
+          setUserEmail(email)
+          setToken(accessToken)
+          setScreen('otp')
+        }}
+        onGoLogin={() => setScreen('login')}
+      />
+    )
+  }
+
+  if (screen === 'otp') {
+    return (
+      <OtpScreen
+        email={userEmail}
+        onVerified={() => setScreen('signDocument')}
+        onBack={() => setScreen('login')}
+      />
+    )
+  }
+
+  if (screen === 'keys') {
+    return <>{navbar(screen)}<KeysPage userEmail={userEmail} /></>
+  }
+
+  if (screen === 'certificate') {
+    return (
+      <>
+        {navbar(screen)}
+        <CertificatePage userName={userName || userEmail} userEmail={userEmail} token={token} />
+      </>
+    )
+  }
+
+  if (screen === 'validateCertificate') {
+    return (
+      <>
+        {navbar(screen)}
+        <ValidateCertificatePage token={token} onBack={() => setScreen('signDocument')} />
+      </>
+    )
+  }
+
+  if (screen === 'validateStandaloneCertificate') {
+    return (
+      <>
+        {navbar(screen)}
+        <ValidateStandaloneCertificatePage onBack={() => setScreen('signDocument')} />
+      </>
+    )
+  }
+
+  if (screen === 'validateWebsite') {
+    return (
+      <>
+        {navbar(screen)}
+        <ValidateWebsitePage token={token} onBack={() => setScreen('signDocument')} />
+      </>
+    )
+  }
 
   return (
     <>
-
-      {/* =====================================================
-          LOGIN
-          ===================================================== */}
-
-      {screen === 'login' && (
-
-        <LoginScreen
-
-          onLogin={(email, t) => {
-
-            setUserEmail(email)
-            setToken(t)
-
-            setScreen('otp')
-          }}
-
-          onGoRegister={() =>
-            setScreen('register')
-          }
-
-        />
-
-      )}
-
-
-      {/* =====================================================
-          REGISTER
-          ===================================================== */}
-
-      {screen === 'register' && (
-
-        <RegisterScreen
-
-          onRegister={(name, email, t) => {
-
-            setUserName(name)
-            setUserEmail(email)
-            setToken(t)
-
-            setScreen('otp')
-          }}
-
-          onGoLogin={() =>
-            setScreen('login')
-          }
-
-        />
-
-      )}
-
-
-      {/* =====================================================
-          OTP
-          ===================================================== */}
-
-      {screen === 'otp' && (
-
-        <OtpScreen
-
-          email={userEmail}
-
-          onVerified={() => {
-
-            setScreen('signDocument')
-          }}
-
-          onBack={() => {
-
-            setScreen('login')
-          }}
-
-        />
-
-      )}
-
-
-      {/* =====================================================
-          ALGORITHM
-          ===================================================== */}
-
-      {screen === 'algorithm' && (
-
-        <AlgorithmScreen
-
-          userName={
-            userName || userEmail
-          }
-
-          onSelect={(algo) => {
-
-            setAlgorithm(algo)
-            setScreen('processing')
-          }}
-
-        />
-
-      )}
-
-
-      {/* =====================================================
-          GENERACIÓN DE LLAVES
-          ===================================================== */}
-
-      {screen === 'processing' && (
-
-        <ProcessingScreen
-
-          algorithm={algorithm}
-
-          token={token}
-
-          userName={userName}
-
-          userEmail={userEmail}
-
-          onComplete={(generatedKeys) => {
-
-            setKeys(generatedKeys)
-            setScreen('keysReady')
-          }}
-
-        />
-
-      )}
-
-
-      {/* =====================================================
-          LLAVES GENERADAS
-          ===================================================== */}
-
-      {screen === 'keysReady' && keys && (
-
-        <KeysReadyScreen
-
-          algorithm={algorithm}
-
-          userName={
-            userName || userEmail
-          }
-
-          userEmail={userEmail}
-
-          privateKeyPem={
-            keys.privateKeyPem
-          }
-
-          publicKeyPem={
-            keys.publicKeyPem
-          }
-
-          certId={keys.certId}
-
-          token={token}
-
-          onReset={reset}
-
-        />
-
-      )}
-
-
-      {/* =====================================================
-          SUCCESS
-          ===================================================== */}
-
-      {screen === 'success' && (
-
-        <SuccessScreen
-
-          algorithm={algorithm}
-
-          userName={
-            userName || userEmail
-          }
-
-          userEmail={userEmail}
-
-          onReset={() => {
-
-            setAlgorithm('ECDSA_P256')
-            setScreen('signDocument')
-          }}
-
-        />
-
-      )}
-
-
-      {/* =====================================================
-          FIRMAR PDF
-          ===================================================== */}
-
-      {screen === 'signDocument' && (
-
-        <>
-
-          <AppNavbar
-
-            userName={
-              userName || userEmail
-            }
-
-            currentScreen={screen}
-
-            onNavigate={
-              navigateAuthenticated
-            }
-
-            onLogout={reset}
-
-          />
-
-          <SignDocumentScreen
-
-            algorithm={algorithm}
-
-            userName={
-              userName || userEmail
-            }
-
-            userEmail={userEmail}
-
-            token={token}
-
-            onBack={() => {
-
-              setScreen('signDocument')
-            }}
-
-          />
-
-        </>
-
-      )}
-
-
-      {/* =====================================================
-          MIS LLAVES
-          ===================================================== */}
-
-      {screen === 'keys' && (
-
-        <>
-
-          <AppNavbar
-
-            userName={
-              userName || userEmail
-            }
-
-            currentScreen={screen}
-
-            onNavigate={
-              navigateAuthenticated
-            }
-
-            onLogout={reset}
-
-          />
-
-          <KeysPage />
-
-        </>
-
-      )}
-
-
-      {/* =====================================================
-          SOLICITAR CERTIFICADO
-          ===================================================== */}
-
-      {screen === 'certificate' && (
-
-        <>
-
-          <AppNavbar
-
-            userName={
-              userName || userEmail
-            }
-
-            currentScreen={screen}
-
-            onNavigate={
-              navigateAuthenticated
-            }
-
-            onLogout={reset}
-
-          />
-
-          <CertificatePage
-
-            token={token}
-
-          />
-
-        </>
-
-      )}
-
-
-      {/* =====================================================
-          VALIDAR CERTIFICADO
-          ===================================================== */}
-
-      {screen === 'validateCertificate' && (
-
-        <>
-
-          <AppNavbar
-
-            userName={
-              userName || userEmail
-            }
-
-            currentScreen={screen}
-
-            onNavigate={
-              navigateAuthenticated
-            }
-
-            onLogout={reset}
-
-          />
-
-          <ValidateCertificatePage
-
-            token={token}
-
-            onBack={() =>
-              setScreen('signDocument')
-            }
-
-          />
-
-        </>
-
-      )}
-
-
-      {/* =====================================================
-          VALIDAR SITIO WEB
-          ===================================================== */}
-
-      {screen === 'validateWebsite' && (
-
-        <>
-
-          <AppNavbar
-
-            userName={
-              userName || userEmail
-            }
-
-            currentScreen={screen}
-
-            onNavigate={
-              navigateAuthenticated
-            }
-
-            onLogout={reset}
-
-          />
-
-          <ValidateWebsitePage />
-
-        </>
-
-      )}
-
+      {navbar('signDocument')}
+      <SignDocumentScreen
+        userName={userName || userEmail}
+        userEmail={userEmail}
+        token={token}
+        onBack={() => setScreen('signDocument')}
+      />
     </>
   )
 }

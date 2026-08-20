@@ -1,28 +1,28 @@
-import { useState, useRef, useCallback } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
-  CheckIcon,
-  LockIcon,
-  DownloadIcon,
-  ShieldIcon,
-  FileIcon,
-} from './icons'
-
-type Algorithm = 'ECDSA_P256' | 'ML_DSA_65'
-
-type SignState =
-  | 'idle'
-  | 'ready'
-  | 'signing'
-  | 'signed'
-  | 'error'
+  base64ToBytes,
+  bytesToBase64,
+  signCmsAttributesLocally,
+  type ClientAlgorithm,
+} from '../crypto'
+import { CheckIcon, DownloadIcon, FileIcon, LockIcon, ShieldIcon } from './icons'
 
 interface SignDocumentScreenProps {
-  algorithm: Algorithm
   userName: string
   userEmail: string
-  certSerial: string
   token: string
   onBack: () => void
+}
+
+type SignState = 'idle' | 'ready' | 'signing' | 'signed' | 'error'
+
+type PrepareResponse = {
+  operation_id: string
+  algorithm: ClientAlgorithm
+  algorithm_label: string
+  digest_algorithm: string
+  to_sign_b64: string
+  expires_in_seconds: number
 }
 
 interface SelectedFile {
@@ -31,222 +31,79 @@ interface SelectedFile {
   size: number
 }
 
+function selectedFile(file: File): SelectedFile {
+  return { file, name: file.name, size: file.size }
+}
 
 export function SignDocumentScreen({
-  algorithm,
   userName,
   userEmail,
-  certSerial,
   token,
   onBack,
 }: SignDocumentScreenProps) {
-  const [signState, setSignState] =
-    useState<SignState>('idle')
+  const [signState, setSignState] = useState<SignState>('idle')
+  const [isDragging, setIsDragging] = useState(false)
+  const [pdfFile, setPdfFile] = useState<SelectedFile | null>(null)
+  const [privateKeyFile, setPrivateKeyFile] = useState<SelectedFile | null>(null)
+  const [certificateFile, setCertificateFile] = useState<SelectedFile | null>(null)
+  const [keyPassword, setKeyPassword] = useState('')
+  const [signedPdf, setSignedPdf] = useState<Blob | null>(null)
+  const [signedFileName, setSignedFileName] = useState('signed-document.pdf')
+  const [usedAlgorithm, setUsedAlgorithm] = useState('')
+  const [error, setError] = useState('')
 
-  const [isDragging, setIsDragging] =
-    useState(false)
-
-  const [pdfFile, setPdfFile] =
-    useState<SelectedFile | null>(null)
-
-  const [privateKeyFile, setPrivateKeyFile] =
-    useState<SelectedFile | null>(null)
-
-  const [certificateFile, setCertificateFile] =
-    useState<SelectedFile | null>(null)
-
-  const [signedPdf, setSignedPdf] =
-    useState<Blob | null>(null)
-
-  const [signedFileName, setSignedFileName] =
-    useState('signed-document.pdf')
-
-  const [error, setError] =
-    useState('')
-
-  const [signedCount, setSignedCount] =
-    useState(0)
-
-  const pdfInputRef =
-    useRef<HTMLInputElement>(null)
-
-  const privateKeyInputRef =
-    useRef<HTMLInputElement>(null)
-
-  const certificateInputRef =
-    useRef<HTMLInputElement>(null)
-
-
-  const algoLabel =
-    algorithm === 'ECDSA_P256'
-      ? 'ECDSA P-256 / SHA-256'
-      : 'ML-DSA-65'
-
-
-  // =========================================================
-  // FILE HELPERS
-  // =========================================================
+  const pdfInputRef = useRef<HTMLInputElement>(null)
+  const privateKeyInputRef = useRef<HTMLInputElement>(null)
+  const certificateInputRef = useRef<HTMLInputElement>(null)
 
   const formatSize = (bytes: number) => {
-    if (bytes < 1024) {
-      return `${bytes} B`
-    }
-
-    if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)} KB`
-    }
-
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
   }
 
-
-  const createSelectedFile = (
-    file: File,
-  ): SelectedFile => ({
-    file,
-    name: file.name,
-    size: file.size,
-  })
-
-
-  // =========================================================
-  // PDF
-  // =========================================================
-
   const loadPdf = useCallback((file: File) => {
     setError('')
-
-    if (
-      file.type !== 'application/pdf' &&
-      !file.name.toLowerCase().endsWith('.pdf')
-    ) {
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
       setError('El archivo seleccionado no es un PDF.')
       return
     }
-
-    setPdfFile(createSelectedFile(file))
+    setPdfFile(selectedFile(file))
     setSignedPdf(null)
     setSignState('ready')
   }, [])
 
-
-  const handlePdfInput = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0]
-
-    if (file) {
-      loadPdf(file)
-    }
-  }
-
-
-  const handleDrop = (
-    e: React.DragEvent<HTMLDivElement>,
-  ) => {
-    e.preventDefault()
-    setIsDragging(false)
-
-    const file = e.dataTransfer.files?.[0]
-
-    if (file) {
-      loadPdf(file)
-    }
-  }
-
-
-  // =========================================================
-  // PRIVATE KEY
-  // =========================================================
-
-  const handlePrivateKeyInput = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0]
-
+  const handlePrivateKey = (file: File | undefined) => {
     if (!file) return
-
-    setError('')
-
-    const validExtension =
-      file.name.toLowerCase().endsWith('.pem') ||
-      file.name.toLowerCase().endsWith('.key')
-
-    if (!validExtension) {
-      setError(
-        'La clave privada debe ser un archivo PEM o KEY.',
-      )
+    if (!/\.(pem|key)$/i.test(file.name)) {
+      setError('La llave privada debe ser un archivo PEM o KEY.')
       return
     }
-
-    setPrivateKeyFile(createSelectedFile(file))
+    setPrivateKeyFile(selectedFile(file))
+    setError('')
   }
 
-
-  // =========================================================
-  // CERTIFICATE
-  // =========================================================
-
-  const handleCertificateInput = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0]
-
+  const handleCertificate = (file: File | undefined) => {
     if (!file) return
-
-    setError('')
-
-    const validExtension =
-      file.name.toLowerCase().endsWith('.pem') ||
-      file.name.toLowerCase().endsWith('.crt') ||
-      file.name.toLowerCase().endsWith('.cer')
-
-    if (!validExtension) {
-      setError(
-        'El certificado debe ser un archivo PEM, CRT o CER.',
-      )
+    if (!/\.(pem|crt|cer)$/i.test(file.name)) {
+      setError('El certificado debe ser PEM, CRT o CER.')
       return
     }
-
-    setCertificateFile(createSelectedFile(file))
+    setCertificateFile(selectedFile(file))
+    setError('')
   }
-
-
-  // =========================================================
-  // VALIDATION
-  // =========================================================
-
-  const canSign =
-    pdfFile !== null &&
-    privateKeyFile !== null &&
-    certificateFile !== null &&
-    signState !== 'signing'
-
-
-  // =========================================================
-  // SIGN PDF
-  // =========================================================
 
   const handleSign = async () => {
-    if (!pdfFile) {
-      setError('Selecciona el PDF que deseas firmar.')
+    if (!pdfFile || !privateKeyFile || !certificateFile) {
+      setError('Selecciona el PDF, la llave privada protegida y el certificado.')
       return
     }
-
-    if (!privateKeyFile) {
-      setError('Selecciona la clave privada del firmante.')
+    if (!keyPassword) {
+      setError('Escribe la contraseña de la llave privada.')
       return
     }
-
-    if (!certificateFile) {
-      setError('Selecciona el certificado del firmante.')
-      return
-    }
-
     if (!token) {
-      setError(
-        'No existe un token de autenticación válido.',
-      )
+      setError('No existe una sesión autenticada.')
       return
     }
 
@@ -255,1113 +112,204 @@ export function SignDocumentScreen({
     setSignedPdf(null)
 
     try {
-      const formData = new FormData()
+      // Fase 1: el backend prepara ByteRange + CMS SignedAttributes.
+      // La llave privada NO se adjunta a esta petición.
+      const prepareForm = new FormData()
+      prepareForm.append('pdf', pdfFile.file, pdfFile.name)
+      prepareForm.append('certificate', certificateFile.file, certificateFile.name)
 
-      formData.append(
-        'pdf',
-        pdfFile.file,
-        pdfFile.name,
+      const prepareResponse = await fetch('/client-api/signatures/prepare-pdf', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: prepareForm,
+      })
+      const prepared = (await prepareResponse.json()) as PrepareResponse & { detail?: string }
+      if (!prepareResponse.ok) throw new Error(prepared.detail || 'No fue posible preparar el PDF.')
+
+      // Fase 2: descifrado y firma criptográfica LOCAL en el navegador.
+      const encryptedPrivatePem = await privateKeyFile.file.text()
+      const signature = await signCmsAttributesLocally(
+        encryptedPrivatePem,
+        keyPassword,
+        prepared.algorithm,
+        base64ToBytes(prepared.to_sign_b64),
       )
 
-      formData.append(
-        'private_key',
-        privateKeyFile.file,
-        privateKeyFile.name,
-      )
-
-      formData.append(
-        'certificate',
-        certificateFile.file,
-        certificateFile.name,
-      )
-
-      const response = await fetch(
-        '/client-api/signatures/sign-pdf',
-        {
-          method: 'POST',
-
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-
-          body: formData,
+      // Fase 3: solo vuelve al backend la firma. pyHanko completa CMS/PAdES.
+      const finalizeResponse = await fetch('/client-api/signatures/finalize-pdf', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-      )
+        body: JSON.stringify({
+          operation_id: prepared.operation_id,
+          signature_b64: bytesToBase64(signature),
+        }),
+      })
 
-
-      if (!response.ok) {
-        let message =
-          'No fue posible firmar el PDF.'
-
-        try {
-          const data = await response.json()
-
-          if (data?.detail) {
-            message = data.detail
-          }
-        } catch {
-          // La respuesta no era JSON.
-        }
-
-        throw new Error(message)
+      if (!finalizeResponse.ok) {
+        const data = await finalizeResponse.json().catch(() => null)
+        throw new Error(data?.detail || 'No fue posible completar la firma del PDF.')
       }
 
+      const blob = await finalizeResponse.blob()
+      if (!blob.size) throw new Error('El servidor devolvió un PDF vacío.')
 
-      const blob = await response.blob()
-
-      if (!blob.size) {
-        throw new Error(
-          'El servidor devolvió un PDF vacío.',
-        )
-      }
-
-
+      const baseName = pdfFile.name.replace(/\.pdf$/i, '').trim() || 'document'
+      setSignedFileName(`${baseName}-signed.pdf`)
       setSignedPdf(blob)
-
-      const originalName =
-        pdfFile.file.name
-
-      const baseName =
-        originalName
-          .replace(/\.pdf$/i, '')
-          .trim() || 'document'
-
-      setSignedFileName(
-        `${baseName}-signed.pdf`,
-      )
-
-      setSignedCount(count => count + 1)
+      setUsedAlgorithm(prepared.algorithm_label)
+      setKeyPassword('')
       setSignState('signed')
-
     } catch (err) {
-      console.error(
-        'Error al firmar PDF:',
-        err,
-      )
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'No fue posible firmar el PDF.',
-      )
-
+      console.error('Error al firmar PDF:', err)
+      setError(err instanceof Error ? err.message : 'No fue posible firmar el PDF.')
       setSignState('error')
     }
   }
 
-
-  // =========================================================
-  // DOWNLOAD SIGNED PDF
-  // =========================================================
-
   const handleDownload = () => {
     if (!signedPdf) return
-
-    const url =
-      URL.createObjectURL(signedPdf)
-
-    const link =
-      document.createElement('a')
-
+    const url = URL.createObjectURL(signedPdf)
+    const link = document.createElement('a')
     link.href = url
     link.download = signedFileName
-
     document.body.appendChild(link)
     link.click()
-
     link.remove()
-
     URL.revokeObjectURL(url)
   }
 
-
-  // =========================================================
-  // RESET
-  // =========================================================
-
-  const handleReset = () => {
-    setPdfFile(null)
-    setPrivateKeyFile(null)
-    setCertificateFile(null)
-    setSignedPdf(null)
-    setSignedFileName('signed-document.pdf')
-    setError('')
-    setSignState('idle')
-
-    if (pdfInputRef.current) {
-      pdfInputRef.current.value = ''
-    }
-
-    if (privateKeyInputRef.current) {
-      privateKeyInputRef.current.value = ''
-    }
-
-    if (certificateInputRef.current) {
-      certificateInputRef.current.value = ''
-    }
-  }
-
-
-  // =========================================================
-  // FILE CARD
-  // =========================================================
-
-  const FileCard = ({
-    label,
-    file,
-    type,
-    onSelect,
-  }: {
-    label: string
-    file: SelectedFile | null
-    type: 'pdf' | 'key' | 'certificate'
-    onSelect: () => void
-  }) => {
-    return (
-      <div
-        className="rounded-xl p-4"
-        style={{
-          backgroundColor: '#f8fbff',
-          border: '1px solid #dce8fd',
-        }}
-      >
-        <div className="flex items-center gap-3">
-
-          <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{
-              backgroundColor:
-                type === 'pdf'
-                  ? 'rgba(220,38,38,0.08)'
-                  : type === 'key'
-                    ? 'rgba(36,80,164,0.08)'
-                    : 'rgba(16,185,129,0.08)',
-            }}
-          >
-            {type === 'pdf' ? (
-              <PdfIcon
-                className="w-5 h-5"
-                style={{ color: '#dc2626' }}
-              />
-            ) : type === 'key' ? (
-              <LockIcon
-                className="w-5 h-5"
-                style={{ color: '#2450a4' }}
-              />
-            ) : (
-              <ShieldIcon
-                className="w-5 h-5"
-                style={{ color: '#10b981' }}
-              />
-            )}
-          </div>
-
-
-          <div className="flex-1 min-w-0">
-
-            <p
-              className="mono text-[10px] uppercase tracking-wide mb-1"
-              style={{ color: '#6b98e8' }}
-            >
-              {label}
-            </p>
-
-            {file ? (
-              <>
-                <p
-                  className="text-sm font-medium truncate"
-                  style={{ color: '#0a1628' }}
-                  title={file.name}
-                >
-                  {file.name}
-                </p>
-
-                <p
-                  className="mono text-[10px] mt-0.5"
-                  style={{ color: '#6b98e8' }}
-                >
-                  {formatSize(file.size)}
-                </p>
-              </>
-            ) : (
-              <p
-                className="text-xs"
-                style={{ color: '#a8c4f4' }}
-              >
-                Archivo no seleccionado
-              </p>
-            )}
-          </div>
-
-
-          <button
-            type="button"
-            onClick={onSelect}
-            className="mono text-[10px] px-3 py-2 rounded-lg flex-shrink-0"
-            style={{
-              color: '#2450a4',
-              backgroundColor: 'white',
-              border: '1px solid #c7d8f5',
-            }}
-          >
-            {file ? 'Cambiar' : 'Seleccionar'}
-          </button>
-
-        </div>
-      </div>
-    )
-  }
-
-
-  // =========================================================
-  // RENDER
-  // =========================================================
+  const canSign = !!pdfFile && !!privateKeyFile && !!certificateFile && !!keyPassword && signState !== 'signing'
 
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        backgroundColor: '#f0f5fe',
-      }}
-    >
-
-      {/* =====================================================
-          HEADER
-          ===================================================== */}
-
-      <div
-        className="w-full"
-        style={{
-          backgroundColor: '#0a1628',
-          borderBottom:
-            '1px solid rgba(100,160,255,0.1)',
-        }}
-      >
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 mono text-xs transition-colors"
-            style={{
-              color: '#6b98e8',
-            }}
-            onMouseEnter={e =>
-              (e.currentTarget.style.color =
-                '#a8c4f4')
-            }
-            onMouseLeave={e =>
-              (e.currentTarget.style.color =
-                '#6b98e8')
-            }
-          >
-            <svg
-              className="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
-              />
-            </svg>
-
-            Volver
-          </button>
-
-
-          <div className="flex items-center gap-3">
-
-            {signedCount > 0 && (
-              <div
-                className="mono text-xs px-3 py-1.5 rounded-full"
-                style={{
-                  backgroundColor:
-                    'rgba(16,185,129,0.15)',
-                  color: '#34d399',
-                  border:
-                    '1px solid rgba(16,185,129,0.25)',
-                }}
-              >
-                {signedCount} PDF
-                {signedCount > 1 ? 's' : ''}{' '}
-                firmado
-                {signedCount > 1 ? 's' : ''}
-              </div>
-            )}
-
-            <div
-              className="mono text-xs"
-              style={{
-                color: '#3b6fd4',
-              }}
-            >
-              {algoLabel}
-            </div>
-
-          </div>
-
-        </div>
-      </div>
-
-
-      {/* =====================================================
-          CONTENT
-          ===================================================== */}
-
-      <div className="max-w-5xl mx-auto px-6 py-10">
-
+    <div className="min-h-screen" style={{ backgroundColor: '#f0f5fe' }}>
+      <div className="max-w-6xl mx-auto px-6 py-12">
         <div className="mb-8">
-
-          <p
-            className="mono text-xs font-semibold tracking-widest uppercase mb-1"
-            style={{
-              color: '#10b981',
-            }}
-          >
-            Firma Digital de Documentos
+          <button type="button" onClick={onBack} className="mono text-xs mb-5" style={{ color: '#3b6fd4' }}>← Inicio</button>
+          <p className="mono text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: '#10b981' }}>Firma de documentos</p>
+          <h1 className="text-3xl font-semibold" style={{ color: '#0a1628' }}>Firmar PDF</h1>
+          <p className="mt-2 text-sm" style={{ color: '#3b6fd4' }}>
+            ECDSA P-256 y ML-DSA-65 con firma local. El backend prepara e incrusta CMS/PAdES, pero nunca recibe tu llave privada ni su contraseña.
           </p>
-
-          <h1
-            className="text-2xl font-semibold mb-1"
-            style={{
-              color: '#0a1628',
-            }}
-          >
-            Firmar documento PDF
-          </h1>
-
-          <p
-            className="text-sm"
-            style={{
-              color: '#3b6fd4',
-            }}
-          >
-            Selecciona el PDF, la clave privada y el
-            certificado que utilizará el servicio de firma.
-          </p>
-
         </div>
 
+        {error && <div className="mb-6 rounded-xl p-4" style={{ backgroundColor: '#fff1f2', border: '1px solid #fecdd3', color: '#991b1b' }}>{error}</div>}
 
-        {/* ===================================================
-            ERROR
-            =================================================== */}
-
-        {error && (
-          <div
-            className="mb-6 rounded-xl px-4 py-3 flex items-start gap-3"
-            style={{
-              backgroundColor: 'rgba(220,38,38,0.06)',
-              border:
-                '1px solid rgba(220,38,38,0.20)',
-            }}
-          >
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-5">
             <div
-              className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{
-                backgroundColor: '#dc2626',
-                color: 'white',
-              }}
+              onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={e => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files?.[0]; if (f) loadPdf(f) }}
+              onClick={() => pdfInputRef.current?.click()}
+              className="bg-white rounded-2xl p-8 text-center cursor-pointer"
+              style={{ border: `2px dashed ${isDragging ? '#2450a4' : '#bfd2f4'}` }}
             >
-              !
+              <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) loadPdf(f) }} />
+              <FileIcon className="w-10 h-10 mx-auto mb-3" style={{ color: '#2450a4' }} />
+              <p className="font-semibold" style={{ color: '#0a1628' }}>{pdfFile ? pdfFile.name : 'Seleccionar PDF'}</p>
+              <p className="text-xs mt-1" style={{ color: '#6b98e8' }}>{pdfFile ? formatSize(pdfFile.size) : 'Arrastra el documento o haz clic aquí'}</p>
             </div>
 
-            <div>
-              <p
-                className="text-sm font-medium"
-                style={{
-                  color: '#991b1b',
-                }}
-              >
-                No fue posible completar la operación
-              </p>
-
-              <p
-                className="text-xs mt-1"
-                style={{
-                  color: '#b91c1c',
-                }}
-              >
-                {error}
-              </p>
-            </div>
-          </div>
-        )}
-
-
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-
-          {/* =================================================
-              LEFT
-              ================================================= */}
-
-          <div className="lg:col-span-3 space-y-4">
-
-            {/* PDF UPLOAD */}
-
-            <div
-              className="rounded-2xl overflow-hidden"
-              style={{
-                backgroundColor: 'white',
-                border:
-                  '1px solid #dce8fd',
-              }}
-            >
-
-              <div
-                className="px-5 py-4"
-                style={{
-                  borderBottom:
-                    '1px solid #f0f5fe',
-                }}
-              >
-                <p
-                  className="mono text-xs font-semibold tracking-wide uppercase"
-                  style={{
-                    color: '#162c5e',
-                  }}
-                >
-                  01 · Documento
-                </p>
-              </div>
-
-
-              {pdfFile ? (
-                <div className="p-5">
-
-                  <FileCard
-                    label="PDF a firmar"
-                    file={pdfFile}
-                    type="pdf"
-                    onSelect={() =>
-                      pdfInputRef.current?.click()
-                    }
-                  />
-
-                  <input
-                    ref={pdfInputRef}
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    className="hidden"
-                    onChange={handlePdfInput}
-                  />
-
-                </div>
-              ) : (
-                <div className="p-5">
-
-                  <div
-                    className="rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200"
-                    style={{
-                      border:
-                        `2px dashed ${
-                          isDragging
-                            ? '#2450a4'
-                            : '#a8c4f4'
-                        }`,
-                      backgroundColor:
-                        isDragging
-                          ? 'rgba(36,80,164,0.06)'
-                          : 'white',
-                      padding: '42px 24px',
-                    }}
-                    onDragOver={e => {
-                      e.preventDefault()
-                      setIsDragging(true)
-                    }}
-                    onDragLeave={() =>
-                      setIsDragging(false)
-                    }
-                    onDrop={handleDrop}
-                    onClick={() =>
-                      pdfInputRef.current?.click()
-                    }
-                  >
-
-                    <div
-                      className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-                      style={{
-                        backgroundColor:
-                          '#f0f5fe',
-                      }}
-                    >
-                      <PdfIcon
-                        className="w-7 h-7"
-                        style={{
-                          color:
-                            isDragging
-                              ? '#2450a4'
-                              : '#6b98e8',
-                        }}
-                      />
-                    </div>
-
-                    <p
-                      className="font-semibold text-sm mb-1"
-                      style={{
-                        color: '#0a1628',
-                      }}
-                    >
-                      Arrastra tu PDF aquí
-                    </p>
-
-                    <p
-                      className="text-xs mb-4"
-                      style={{
-                        color: '#6b98e8',
-                      }}
-                    >
-                      o haz clic para seleccionar
-                    </p>
-
-                    <span
-                      className="mono text-xs px-3 py-1.5 rounded-lg"
-                      style={{
-                        backgroundColor:
-                          '#f0f5fe',
-                        color: '#6b98e8',
-                        border:
-                          '1px solid #dce8fd',
-                      }}
-                    >
-                      Solo archivos .pdf
-                    </span>
-
-                    <input
-                      ref={pdfInputRef}
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      className="hidden"
-                      onChange={handlePdfInput}
-                    />
-
-                  </div>
-
-                </div>
-              )}
-
-            </div>
-
-
-            {/* PRIVATE KEY */}
-
-            <div
-              className="rounded-2xl p-5"
-              style={{
-                backgroundColor: 'white',
-                border:
-                  '1px solid #dce8fd',
-              }}
-            >
-
-              <p
-                className="mono text-xs font-semibold tracking-wide uppercase mb-4"
-                style={{
-                  color: '#162c5e',
-                }}
-              >
-                02 · Clave privada
-              </p>
-
-              <FileCard
-                label="Clave privada del firmante"
+            <div className="grid md:grid-cols-2 gap-5">
+              <FileSelector
+                title="Llave privada protegida"
+                description="ENCRYPTED PRIVATE KEY PEM"
                 file={privateKeyFile}
-                type="key"
-                onSelect={() =>
-                  privateKeyInputRef.current?.click()
-                }
-              />
-
-              <input
-                ref={privateKeyInputRef}
-                type="file"
-                accept=".pem,.key"
-                className="hidden"
-                onChange={handlePrivateKeyInput}
-              />
-
-            </div>
-
-
-            {/* CERTIFICATE */}
-
-            <div
-              className="rounded-2xl p-5"
-              style={{
-                backgroundColor: 'white',
-                border:
-                  '1px solid #dce8fd',
-              }}
-            >
-
-              <p
-                className="mono text-xs font-semibold tracking-wide uppercase mb-4"
-                style={{
-                  color: '#162c5e',
-                }}
+                onClick={() => privateKeyInputRef.current?.click()}
               >
-                03 · Certificado
-              </p>
-
-              <FileCard
-                label="Certificado X.509 del firmante"
+                <input ref={privateKeyInputRef} type="file" accept=".pem,.key" className="hidden" onChange={e => handlePrivateKey(e.target.files?.[0])} />
+              </FileSelector>
+              <FileSelector
+                title="Certificado del firmante"
+                description="X.509 PEM/CRT"
                 file={certificateFile}
-                type="certificate"
-                onSelect={() =>
-                  certificateInputRef.current?.click()
-                }
-              />
+                onClick={() => certificateInputRef.current?.click()}
+              >
+                <input ref={certificateInputRef} type="file" accept=".pem,.crt,.cer" className="hidden" onChange={e => handleCertificate(e.target.files?.[0])} />
+              </FileSelector>
+            </div>
 
+            <div className="bg-white rounded-2xl p-5" style={{ border: '1px solid #dce8fd' }}>
+              <label className="block text-sm font-semibold mb-2" style={{ color: '#162c5e' }}>Contraseña de la llave privada</label>
               <input
-                ref={certificateInputRef}
-                type="file"
-                accept=".pem,.crt,.cer"
-                className="hidden"
-                onChange={handleCertificateInput}
+                type="password"
+                value={keyPassword}
+                onChange={e => setKeyPassword(e.target.value)}
+                autoComplete="current-password"
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+                style={{ border: '1px solid #c7d8f5' }}
+                placeholder="La misma contraseña usada al descargar la llave"
               />
-
+              <p className="text-xs mt-2" style={{ color: '#059669' }}>Esta contraseña no se envía en ninguna petición HTTP.</p>
             </div>
-
-
-            {/* SIGN BUTTON */}
-
-            {signState !== 'signed' && (
-              <button
-                type="button"
-                disabled={!canSign}
-                onClick={handleSign}
-                className="w-full py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200"
-                style={{
-                  backgroundColor:
-                    canSign
-                      ? '#0a1628'
-                      : '#c7d8f5',
-                  color: 'white',
-                  cursor:
-                    canSign
-                      ? 'pointer'
-                      : 'not-allowed',
-                }}
-              >
-
-                {signState === 'signing' ? (
-                  <>
-                    <div
-                      className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin"
-                    />
-
-                    Firmando documento...
-                  </>
-                ) : (
-                  <>
-                    <LockIcon className="w-4 h-4" />
-
-                    Firmar PDF
-                  </>
-                )}
-
-              </button>
-            )}
-
-
-            {/* DOWNLOAD */}
-
-            {signState === 'signed' && (
-              <div className="space-y-3">
-
-                <button
-                  type="button"
-                  onClick={handleDownload}
-                  className="w-full py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200"
-                  style={{
-                    backgroundColor: '#2450a4',
-                    color: 'white',
-                  }}
-                >
-                  <DownloadIcon className="w-4 h-4" />
-
-                  Descargar PDF firmado
-                </button>
-
-
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="w-full py-3 rounded-xl text-sm font-medium"
-                  style={{
-                    backgroundColor: 'white',
-                    color: '#3b6fd4',
-                    border:
-                      '1.5px solid #dce8fd',
-                  }}
-                >
-                  Firmar otro documento
-                </button>
-
-              </div>
-            )}
-
           </div>
 
-
-          {/* =================================================
-              RIGHT
-              ================================================= */}
-
-          <div className="lg:col-span-2 space-y-4">
-
-            {/* USER */}
-
-            <div
-              className="rounded-2xl p-5"
-              style={{
-                backgroundColor: 'white',
-                border:
-                  '1px solid #dce8fd',
-              }}
-            >
-
-              <p
-                className="mono text-xs font-semibold tracking-wide uppercase mb-4"
-                style={{
-                  color: '#162c5e',
-                }}
-              >
-                Identidad del firmante
+          <div className="space-y-5">
+            <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid #dce8fd' }}>
+              <ShieldIcon className="w-7 h-7 mb-3" style={{ color: '#2450a4' }} />
+              <h2 className="font-semibold" style={{ color: '#0a1628' }}>Firma local</h2>
+              <p className="text-xs mt-2 leading-relaxed" style={{ color: '#6b98e8' }}>
+                El certificado determina automáticamente si la operación usa ECDSA P-256 o ML-DSA-65. Solo los atributos CMS preparados se firman en este navegador.
               </p>
-
-              <div className="space-y-3">
-
-                <InfoRow
-                  label="Nombre"
-                  value={userName || userEmail}
-                />
-
-                <InfoRow
-                  label="Email"
-                  value={userEmail}
-                />
-
-                <InfoRow
-                  label="Algoritmo"
-                  value={algoLabel}
-                />
-
-                {certSerial && (
-                  <InfoRow
-                    label="Certificado"
-                    value={certSerial}
-                  />
-                )}
-
+              <div className="mt-4 text-xs space-y-1" style={{ color: '#3b6fd4' }}>
+                <p>Usuario: {userName || userEmail}</p>
+                <p>Llave privada: nunca sale del cliente</p>
+                <p>Contraseña: nunca sale del cliente</p>
               </div>
-
             </div>
 
-
-            {/* REQUIREMENTS */}
-
-            <div
-              className="rounded-2xl overflow-hidden"
-              style={{
-                backgroundColor: '#0a1628',
-              }}
+            <button
+              type="button"
+              onClick={handleSign}
+              disabled={!canSign}
+              className="w-full py-4 rounded-xl font-semibold"
+              style={{ backgroundColor: canSign ? '#0a1628' : '#c7d8f5', color: 'white' }}
             >
+              {signState === 'signing' ? 'Firmando localmente...' : 'Firmar PDF'}
+            </button>
 
-              <div className="p-6">
-
-                <p
-                  className="mono text-xs tracking-widest uppercase mb-5"
-                  style={{
-                    color: '#10b981',
-                  }}
-                >
-                  Componentes requeridos
-                </p>
-
-                <Requirement
-                  number="01"
-                  title="Documento PDF"
-                  description="Documento que será procesado y firmado."
-                  active={pdfFile !== null}
-                />
-
-                <Requirement
-                  number="02"
-                  title="Clave privada"
-                  description="Clave privada correspondiente al certificado."
-                  active={privateKeyFile !== null}
-                />
-
-                <Requirement
-                  number="03"
-                  title="Certificado X.509"
-                  description="Certificado que identifica al firmante."
-                  active={certificateFile !== null}
-                />
-
-              </div>
-
-            </div>
-
-
-            {/* STATUS */}
-
-            {signState === 'signed' && (
-              <div
-                className="rounded-2xl overflow-hidden"
-                style={{
-                  border:
-                    '1px solid rgba(16,185,129,0.3)',
-                  backgroundColor:
-                    'rgba(16,185,129,0.05)',
-                }}
-              >
-
-                <div className="p-5">
-
-                  <div className="flex items-center gap-3 mb-4">
-
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center"
-                      style={{
-                        backgroundColor:
-                          '#10b981',
-                      }}
-                    >
-                      <CheckIcon className="w-5 h-5 text-white" />
-                    </div>
-
-                    <div>
-
-                      <p
-                        className="font-semibold text-sm"
-                        style={{
-                          color: '#065f46',
-                        }}
-                      >
-                        PDF firmado correctamente
-                      </p>
-
-                      <p
-                        className="text-xs mt-0.5"
-                        style={{
-                          color: '#059669',
-                        }}
-                      >
-                        pyHanko completó la firma digital.
-                      </p>
-
-                    </div>
-
-                  </div>
-
-
-                  <div
-                    className="rounded-lg p-3"
-                    style={{
-                      backgroundColor:
-                        'rgba(16,185,129,0.06)',
-                      border:
-                        '1px solid rgba(16,185,129,0.15)',
-                    }}
-                  >
-
-                    <p
-                      className="mono text-xs break-all"
-                      style={{
-                        color: '#047857',
-                      }}
-                    >
-                      {signedFileName}
-                    </p>
-
-                  </div>
-
-                </div>
-
+            {signState === 'signed' && signedPdf && (
+              <div className="rounded-2xl p-5" style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                <div className="flex items-center gap-2 mb-2"><CheckIcon className="w-5 h-5" style={{ color: '#059669' }} /><strong style={{ color: '#166534' }}>PDF firmado</strong></div>
+                <p className="text-xs mb-4" style={{ color: '#166534' }}>{usedAlgorithm}</p>
+                <button type="button" onClick={handleDownload} className="w-full py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2" style={{ backgroundColor: '#059669', color: 'white' }}>
+                  <DownloadIcon className="w-4 h-4" /> Descargar PDF firmado
+                </button>
               </div>
             )}
-
-
-            {/* SECURITY NOTE */}
-
-            <div
-              className="rounded-xl p-4 flex items-start gap-3"
-              style={{
-                backgroundColor: 'white',
-                border:
-                  '1px solid #dce8fd',
-              }}
-            >
-
-              <ShieldIcon
-                className="w-5 h-5 flex-shrink-0"
-                style={{
-                  color: '#10b981',
-                }}
-              />
-
-              <p
-                className="text-xs leading-relaxed"
-                style={{
-                  color: '#6b98e8',
-                }}
-              >
-                La operación requiere autenticación mediante
-                JWT. El servicio verifica que la clave privada
-                corresponda al certificado antes de generar
-                la firma PDF.
-              </p>
-
-            </div>
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   )
 }
 
-
-// ===========================================================
-// INFO ROW
-// ===========================================================
-
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-
-      <span
-        className="text-xs flex-shrink-0"
-        style={{
-          color: '#6b98e8',
-        }}
-      >
-        {label}
-      </span>
-
-      <span
-        className="mono text-xs text-right break-all"
-        style={{
-          color: '#0a1628',
-          maxWidth: '180px',
-        }}
-      >
-        {value}
-      </span>
-
-    </div>
-  )
-}
-
-
-// ===========================================================
-// REQUIREMENT
-// ===========================================================
-
-function Requirement({
-  number,
+function FileSelector({
   title,
   description,
-  active,
+  file,
+  onClick,
+  children,
 }: {
-  number: string
   title: string
   description: string
-  active: boolean
+  file: SelectedFile | null
+  onClick: () => void
+  children: React.ReactNode
 }) {
   return (
-    <div className="flex gap-3 mb-5 last:mb-0">
-
-      <div
-        className="mono text-xs font-semibold flex-shrink-0 mt-0.5"
-        style={{
-          color: active
-            ? '#10b981'
-            : '#3b6fd4',
-        }}
-      >
-        {number}
+    <div onClick={onClick} className="bg-white rounded-2xl p-5 cursor-pointer" style={{ border: '1px solid #dce8fd' }}>
+      {children}
+      <div className="flex gap-3 items-start">
+        <LockIcon className="w-5 h-5 mt-0.5" style={{ color: '#2450a4' }} />
+        <div>
+          <p className="font-semibold text-sm" style={{ color: '#0a1628' }}>{title}</p>
+          <p className="text-xs mt-1" style={{ color: '#6b98e8' }}>{file ? file.name : description}</p>
+        </div>
       </div>
-
-      <div>
-
-        <p
-          className="text-sm font-medium mb-1"
-          style={{
-            color: active
-              ? 'white'
-              : '#a8c4f4',
-          }}
-        >
-          {title}
-
-          {active && (
-            <span
-              className="ml-2"
-              style={{
-                color: '#34d399',
-              }}
-            >
-              ✓
-            </span>
-          )}
-        </p>
-
-        <p
-          className="text-xs leading-relaxed"
-          style={{
-            color: '#6b98e8',
-          }}
-        >
-          {description}
-        </p>
-
-      </div>
-
     </div>
-  )
-}
-
-
-// ===========================================================
-// PDF ICON
-// ===========================================================
-
-function PdfIcon({
-  className,
-  style,
-}: {
-  className?: string
-  style?: React.CSSProperties
-}) {
-  return (
-    <svg
-      className={className}
-      style={style}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-      />
-    </svg>
   )
 }

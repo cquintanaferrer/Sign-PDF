@@ -8,3 +8,10 @@ SignPDF_CA_*.zip.sha256
 
 # Archivos del sistema/editor
 .DS_Store
+SignPDF_*PATCH*.zip
+SignPDF_*PATCH*.zip.sha256
+Sign-PDF-proyectos-acoplados-MLDSA*.zip
+
+# Copias antiguas del cliente/API no forman parte del proyecto activo
+sign-pdf-api.zip
+sign-pdf-client.zip

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from cryptography import x509
+from cryptography.x509.oid import ExtensionOID
 from cryptography.hazmat.primitives import hashes
 
 from app.crypto.algorithm_registry import (
@@ -80,10 +81,38 @@ def issue_certificate(
             .not_valid_after(now + timedelta(days=365))
         )
 
+        present_extension_oids = set()
+
         for extension in csr.extensions:
+            present_extension_oids.add(extension.oid)
             builder = builder.add_extension(
                 extension.value,
                 extension.critical,
+            )
+
+        # Los certificados de usuario son certificados finales de firma,
+        # nunca autoridades certificadoras. Estas extensiones se agregan
+        # si la CSR no las solicitó explícitamente.
+        if ExtensionOID.BASIC_CONSTRAINTS not in present_extension_oids:
+            builder = builder.add_extension(
+                x509.BasicConstraints(ca=False, path_length=None),
+                critical=True,
+            )
+
+        if ExtensionOID.KEY_USAGE not in present_extension_oids:
+            builder = builder.add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    content_commitment=True,
+                    key_encipherment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=False,
+                    crl_sign=False,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
             )
 
         sign_algorithm = (

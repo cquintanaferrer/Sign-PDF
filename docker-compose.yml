@@ -28,7 +28,7 @@ services:
   ca-service:
     build:
       context: ./ca-service
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
 
     container_name: signpdf-ca
     restart: unless-stopped
@@ -58,7 +58,7 @@ services:
   ca-frontend:
     build:
       context: ./ca-frontend
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
 
     container_name: signpdf-ca-frontend
     restart: unless-stopped
@@ -84,6 +84,10 @@ services:
 
     environment:
       CA_SERVICE_URL: http://ca-service:8000
+      DATABASE_URL: sqlite:////app/data/sign_pdf.db
+
+    volumes:
+      - signpdf_client_data:/app/data
 
     depends_on:
       - ca-service
@@ -142,6 +146,7 @@ services:
 
 volumes:
   postgres_data:
+  signpdf_client_data:
 
 
 # ==========================================================

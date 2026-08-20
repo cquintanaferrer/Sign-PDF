@@ -79,3 +79,16 @@ export function derContext0Empty(): Uint8Array {
   // PKCS#10 attributes [0] IMPLICIT SET OF Attribute; empty for the MVP.
   return Uint8Array.of(0xa0, 0x00);
 }
+
+
+export function derOctetString(value: Uint8Array): Uint8Array {
+  return der(0x04, value);
+}
+
+export function derNull(): Uint8Array {
+  return Uint8Array.of(0x05, 0x00);
+}
+
+export function derContext0Primitive(value: Uint8Array): Uint8Array {
+  return der(0x80, value);
+}

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 import models, schemas, security
 from database import get_db
+from dependencies import get_current_user
 
 router = APIRouter()
 
@@ -27,3 +28,8 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
     
     access_token = security.create_access_token(data={"sub": db_user.email})
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/me", response_model=schemas.UserResponse)
+def me(current_user=Depends(get_current_user)):
+    """Devuelve el perfil del usuario autenticado."""
+    return current_user
